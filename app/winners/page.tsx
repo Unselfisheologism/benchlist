@@ -11,8 +11,8 @@ import { getWinnersByDate } from "@/app/actions/home"
 import { getTopCategories } from "@/app/actions/projects"
 
 export const metadata = {
-  title: "Daily Winners - Open-Launch",
-  description: "Check out the daily winners on Open-Launch",
+  title: "Top Benchmarks - Benchlist",
+  description: "Top-ranked AI benchmarks on Benchlist",
 }
 
 // Composant pour afficher le message quand il n'y a pas de gagnants

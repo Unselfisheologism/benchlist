@@ -5,7 +5,7 @@ interface BasicUser {
   name: string | null
 }
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://open-launch.com"
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://benchlist.dev"
 
 function getBadgeName(ranking: number): string {
   switch (ranking) {
@@ -50,7 +50,7 @@ export async function sendWinnerBadgeEmail({
   const htmlBody = `
     <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
       <h1 style="font-size: 24px; color: #1a1a1a;">Hi ${effectiveUserName} 👋</h1>
-      <p><strong>${projectName}</strong> is a <strong>${badgeName}</strong> on Open-Launch!</p>
+      <p><strong>${projectName}</strong> is a <strong>${badgeName}</strong> on Benchlist!</p>
 
       <p style="text-align: center; margin: 25px 0;">
         <a href="${projectBadgesPageUrl}" style="background-color: #007bff; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-size: 16px; display: inline-block;">
@@ -89,11 +89,11 @@ export async function sendLaunchReminderEmail({
   const htmlBody = `
     <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
       <h1 style="font-size: 22px; color: #1a1a1a;">Hi ${effectiveUserName},</h1>
-      <p>Just a quick heads-up: your project, <strong>${projectName}</strong>, is launching today on Open-Launch!</p>
+      <p>Just a quick heads-up: your project, <strong>${projectName}</strong>, is listed on Benchlist!</p>
       <p>We hope you had a great launch day!</p>
       <p>You can view your project live here: <a href="${projectUrl}">${projectUrl}</a></p> 
       <p style="margin-top: 25px;">Best of luck!</p>
-      <p>The Open-Launch Team</p>
+      <p>The Benchlist Team</p>
     </div>
   `
 

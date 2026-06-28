@@ -139,7 +139,7 @@ export async function sendDiscordCommentNotification(
  * @param launchDate Date of the launch
  * @param launchType Type of launch (free, premium, premium plus)
  * @param websiteUrl URL of the project website
- * @param projectUrl URL of the project page on Open-Launch
+ * @param projectUrl URL of the project page on Benchlist
  * @param userId ID of the user who submitted the launch notification
  */
 export async function notifyDiscordLaunch(

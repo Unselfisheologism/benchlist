@@ -202,6 +202,8 @@ interface ProjectSubmissionData {
   pricing: string
   githubUrl?: string | null
   twitterUrl?: string | null
+  sourceUrl?: string | null
+  paperUrl?: string | null
 }
 
 // Version correcte de submitProject
@@ -226,19 +228,12 @@ export async function submitProject(projectData: ProjectSubmissionData) {
       pricing,
       githubUrl,
       twitterUrl,
+      sourceUrl,
+      paperUrl,
     } = projectData
 
     // Validation
-    if (
-      !name ||
-      !description ||
-      !websiteUrl ||
-      !logoUrl ||
-      categories.length === 0 ||
-      techStack.length === 0 ||
-      platforms.length === 0 ||
-      !pricing
-    ) {
+    if (!name || !description || !websiteUrl || !logoUrl || categories.length === 0) {
       return { success: false, error: "Missing required fields" }
     }
 
@@ -250,7 +245,6 @@ export async function submitProject(projectData: ProjectSubmissionData) {
       .insert(projectTable)
       .values({
         id: crypto.randomUUID(),
-        // Utiliser les variables déstructurées de projectData
         name,
         slug,
         description,
@@ -262,6 +256,8 @@ export async function submitProject(projectData: ProjectSubmissionData) {
         pricing,
         githubUrl: githubUrl ?? undefined,
         twitterUrl: twitterUrl ?? undefined,
+        sourceUrl: sourceUrl ?? undefined,
+        paperUrl: paperUrl ?? undefined,
         createdBy: session.user.id,
         createdAt: new Date(),
         updatedAt: new Date(),

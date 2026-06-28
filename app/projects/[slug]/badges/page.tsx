@@ -27,8 +27,8 @@ export async function generateMetadata({ params }: BadgesPageProps): Promise<Met
   }
 
   return {
-    title: `${projectData.name} - Badges | Open-Launch`,
-    description: "Get your Open-Launch achievement badges",
+    title: `${projectData.name} - Badges | Benchlist`,
+    description: "Get your Benchlist achievement badges",
   }
 }
 

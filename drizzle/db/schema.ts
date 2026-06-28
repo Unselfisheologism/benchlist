@@ -31,7 +31,6 @@ export const launchType = {
 
 export type LaunchType = (typeof launchType)[keyof typeof launchType]
 
-// Ajouter de nouveaux enums pour les projets tech
 export const pricingType = {
   FREE: "free",
   FREEMIUM: "freemium",
@@ -115,9 +114,9 @@ export const project = pgTable(
     productImage: text("product_image"),
     githubUrl: text("github_url"),
     twitterUrl: text("twitter_url"),
-    techStack: text("tech_stack").array(), // Array des technologies
+    techStack: text("tech_stack").array(),
     pricing: text("pricing").notNull().default(pricingType.FREE),
-    platforms: text("platforms").array(), // Array des plateformes supportées
+    platforms: text("platforms").array(),
     launchStatus: text("launch_status").notNull().default(launchStatus.SCHEDULED),
     scheduledLaunchDate: timestamp("scheduled_launch_date"),
     launchType: text("launch_type").default(launchType.FREE),
@@ -128,6 +127,14 @@ export const project = pgTable(
     createdBy: text("created_by").references(() => user.id, {
       onDelete: "set null",
     }),
+    // ── Benchmark-specific fields ──
+    sourceUrl: text("source_url"), // URL to auto-fetch latest data from
+    lastFetchedAt: timestamp("last_fetched_at"),
+    benchmarkData: json("benchmark_data"), // latest scores/results as JSON
+    paperUrl: text("paper_url"), // link to the research paper
+    repoUrl: text("repo_url"), // GitHub/GitLab repo
+    lastUpdated: text("last_updated"), // human-readable "Last updated: Jan 2025"
+    methodology: text("methodology"), // brief description of how it works
   },
   (table) => {
     return {
@@ -181,7 +188,7 @@ export const upvote = pgTable("upvote", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 })
 
-// Tables pour Fuma Comment
+// Fuma Comment tables
 export const fumaRoles = pgTable("fuma_roles", {
   userId: varchar("user_id", { length: 256 }).primaryKey(),
   name: varchar("name", { length: 256 }).notNull(),
@@ -210,7 +217,7 @@ export const fumaRates = pgTable(
   ],
 )
 
-// New table for tracking daily launches
+// Launch quota tracking
 export const launchQuota = pgTable("launch_quota", {
   id: text("id").primaryKey(),
   date: timestamp("date").notNull().unique(),
@@ -221,7 +228,7 @@ export const launchQuota = pgTable("launch_quota", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 })
 
-// New table for tracking project submissions during coming soon phase
+// Waitlist submissions
 export const waitlistSubmission = pgTable("waitlist_submission", {
   id: text("id").primaryKey(),
   projectUrl: text("project_url").notNull(),
@@ -230,6 +237,7 @@ export const waitlistSubmission = pgTable("waitlist_submission", {
   userAgent: text("user_agent"),
 })
 
+// SEO articles
 export const seoArticle = pgTable(
   "seo_article",
   {
@@ -237,8 +245,8 @@ export const seoArticle = pgTable(
     slug: text("slug").notNull().unique(),
     title: text("title").notNull(),
     description: text("description").notNull(),
-    content: text("content").notNull(), // Contenu MDX complet
-    image: text("image"), // URL de l'image principale
+    content: text("content").notNull(),
+    image: text("image"),
     metaTitle: text("meta_title"),
     metaDescription: text("meta_description"),
     publishedAt: timestamp("published_at").notNull(),
@@ -252,6 +260,7 @@ export const seoArticle = pgTable(
   },
 )
 
+// Blog articles
 export const blogArticle = pgTable(
   "blog_article",
   {
@@ -259,10 +268,10 @@ export const blogArticle = pgTable(
     slug: text("slug").notNull().unique(),
     title: text("title").notNull(),
     description: text("description").notNull(),
-    content: text("content").notNull(), // Contenu MDX complet
-    image: text("image"), // URL de l'image principale
-    tags: text("tags").array(), // Array des tags
-    author: text("author").notNull().default("Open Launch Team"),
+    content: text("content").notNull(),
+    image: text("image"),
+    tags: text("tags").array(),
+    author: text("author").notNull().default("Benchlist Team"),
     metaTitle: text("meta_title"),
     metaDescription: text("meta_description"),
     publishedAt: timestamp("published_at").notNull(),

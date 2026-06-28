@@ -1,17 +1,11 @@
-/* eslint-disable @next/next/no-img-element */
 import { headers } from "next/headers"
 import Link from "next/link"
 
 import {
   RiDashboardLine,
   RiFlashlightLine,
-  RiHandCoinLine,
-  RiHomeLine,
-  RiLayoutGridLine,
   RiLoginBoxLine,
-  RiMedalLine,
   RiMenuLine,
-  RiMoneyDollarCircleLine,
   RiUserAddLine,
 } from "@remixicon/react"
 import { User } from "better-auth"
@@ -45,20 +39,21 @@ export default async function Nav() {
         {/* Logo */}
         <div className="flex items-center gap-8">
           <Link href="/" className="font-heading flex items-center">
-            <span className="font-heading flex items-center text-lg font-bold">
-              <img src="/logo.svg" alt="logo" className="mr-1 h-6 w-6" />
-              Open-Launch
+            <span className="font-heading flex items-center text-lg font-bold tracking-tight">
+              <span className="bg-primary text-primary-foreground mr-1.5 flex h-7 w-7 items-center justify-center rounded-lg text-xs font-black">
+                B
+              </span>
+              Benchlist
             </span>
           </Link>
 
-          {/* Navigation principale */}
+          {/* Main Navigation */}
           <NavMenu showDashboard={!!session} />
         </div>
 
-        {/* Version Desktop - Recherche et actions */}
+        {/* Desktop */}
         <div className="hidden items-center gap-3 md:flex">
           {session && <SearchCommand />}
-
           <ThemeToggle />
           {session ? (
             <UserNav user={user as User} />
@@ -74,7 +69,7 @@ export default async function Nav() {
           )}
         </div>
 
-        {/* Version Mobile - Menu Drawer */}
+        {/* Mobile */}
         <div className="flex items-center md:hidden">
           {session && <UserNav user={user as User} />}
           {!session && (
@@ -108,7 +103,6 @@ export default async function Nav() {
                       <div className="bg-border my-4 h-px" />
                     </>
                   )}
-                  {/* Navigation */}
                   {session && (
                     <div className="mb-4">
                       <div className="mb-2 px-6">
@@ -122,7 +116,7 @@ export default async function Nav() {
                             href="/"
                             className="hover:bg-muted/50 flex items-center gap-3 px-6 py-2.5 text-sm transition-colors"
                           >
-                            <RiHomeLine className="text-muted-foreground h-4 w-4" />
+                            <RiFlashlightLine className="text-muted-foreground h-4 w-4" />
                             <span>Home</span>
                           </Link>
                         </SheetClose>
@@ -133,42 +127,6 @@ export default async function Nav() {
                           >
                             <RiFlashlightLine className="text-muted-foreground h-4 w-4" />
                             <span>Trending</span>
-                          </Link>
-                        </SheetClose>
-                        <SheetClose asChild>
-                          <Link
-                            href="/categories"
-                            className="hover:bg-muted/50 flex items-center gap-3 px-6 py-2.5 text-sm transition-colors"
-                          >
-                            <RiLayoutGridLine className="text-muted-foreground h-4 w-4" />
-                            <span>Categories</span>
-                          </Link>
-                        </SheetClose>
-                        <SheetClose asChild>
-                          <Link
-                            href="/winners"
-                            className="hover:bg-muted/50 flex items-center gap-3 px-6 py-2.5 text-sm transition-colors"
-                          >
-                            <RiMedalLine className="text-muted-foreground h-4 w-4" />
-                            <span>Winners</span>
-                          </Link>
-                        </SheetClose>
-                        <SheetClose asChild>
-                          <Link
-                            href="/pricing"
-                            className="hover:bg-muted/50 flex items-center gap-3 px-6 py-2.5 text-sm transition-colors"
-                          >
-                            <RiMoneyDollarCircleLine className="text-muted-foreground h-4 w-4" />
-                            <span>Pricing</span>
-                          </Link>
-                        </SheetClose>
-                        <SheetClose asChild>
-                          <Link
-                            href="/sponsors"
-                            className="hover:bg-muted/50 flex items-center gap-3 px-6 py-2.5 text-sm transition-colors"
-                          >
-                            <RiHandCoinLine className="text-muted-foreground h-4 w-4" />
-                            <span>Sponsors</span>
                           </Link>
                         </SheetClose>
                         <SheetClose asChild>
@@ -184,10 +142,8 @@ export default async function Nav() {
                     </div>
                   )}
 
-                  {/* Séparateur */}
                   <div className="bg-border my-4 h-px" />
 
-                  {/* Actions */}
                   <div className="mb-4">
                     <div className="mb-2 px-6">
                       <h3 className="text-muted-foreground mb-2 text-xs font-medium">ACTIONS</h3>

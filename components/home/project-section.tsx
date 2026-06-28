@@ -24,6 +24,9 @@ interface Project {
   userHasUpvoted?: boolean
   categories?: { id: string; name: string }[]
   dailyRanking?: number | null
+  sourceUrl?: string | null
+  paperUrl?: string | null
+  repoUrl?: string | null
 }
 
 interface ProjectSectionProps {
@@ -69,7 +72,7 @@ export function ProjectSection({
   return (
     <section className="space-y-3 sm:space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold sm:text-2xl">{title}</h2>
+        <h2 className="font-heading text-xl font-semibold sm:text-2xl">{title}</h2>
         {moreHref && (
           <div className="hidden sm:block">
             <ViewAllButton />
@@ -79,7 +82,7 @@ export function ProjectSection({
 
       <div>
         {sortedProjects.length > 0 ? (
-          <div className="-mx-3 flex flex-col sm:-mx-4">
+          <div className="flex flex-col gap-1">
             {sortedProjects.map((project, index) => (
               <ProjectCard
                 key={project.id}
@@ -98,12 +101,19 @@ export function ProjectSection({
                 isAuthenticated={isAuthenticated}
                 index={index}
                 websiteUrl={project.websiteUrl ?? undefined}
+                sourceUrl={project.sourceUrl ?? undefined}
+                paperUrl={project.paperUrl ?? undefined}
+                repoUrl={project.repoUrl ?? undefined}
               />
             ))}
           </div>
         ) : (
           <div className="text-muted-foreground border-border bg-card rounded-lg border border-dashed py-8 text-center text-sm">
-            {'No projects found for "' + title + '"'}
+            No benchmarks found yet. Be the first to{" "}
+            <Link href="/projects/submit" className="text-primary hover:underline">
+              submit one
+            </Link>
+            !
           </div>
         )}
 

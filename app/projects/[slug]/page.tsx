@@ -6,6 +6,7 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 
 import {
+  RiFilePaper2Line,
   RiGithubFill,
   RiGlobalLine,
   RiHashtag,
@@ -54,10 +55,10 @@ export async function generateMetadata(
   const previousImages = (await parent).openGraph?.images || []
 
   return {
-    title: `${projectData.name} | Open-Launch`,
+    title: `${projectData.name} | Benchlist`,
     description: stripHtml(projectData.description),
     openGraph: {
-      title: `${projectData.name} on Open-Launch`,
+      title: `${projectData.name} on Benchlist`,
       description: stripHtml(projectData.description),
       images: [
         projectData.productImage || projectData.coverImageUrl || projectData.logoUrl,
@@ -66,7 +67,7 @@ export async function generateMetadata(
     },
     twitter: {
       card: "summary_large_image",
-      title: `${projectData.name} on Open-Launch`,
+      title: `${projectData.name} on Benchlist`,
       description: stripHtml(projectData.description),
       images: [projectData.productImage || projectData.logoUrl],
     },
@@ -310,16 +311,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
                 <h2 className="mb-4 text-lg font-semibold" id="comments">
                   Comments
                 </h2>
-                {projectData.launchStatus === "ongoing" ||
-                projectData.launchStatus === "launched" ? (
-                  <ProjectComments projectId={projectData.id} />
-                ) : (
-                  <div className="py-6 text-center">
-                    <p className="text-muted-foreground">
-                      Comments will be available once the project is launched.
-                    </p>
-                  </div>
-                )}
+                <ProjectComments projectId={projectData.id} />
               </div>
             </div>
           </div>
@@ -338,12 +330,12 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
                     <div className="flex">
                       <img
                         src={`/images/badges/top${projectData.dailyRanking}-light.svg`}
-                        alt={`Open-Launch Top ${projectData.dailyRanking} Daily Winner`}
+                        alt={`Benchlist Top ${projectData.dailyRanking} Daily Winner`}
                         className="h-12 w-auto dark:hidden"
                       />
                       <img
                         src={`/images/badges/top${projectData.dailyRanking}-dark.svg`}
-                        alt={`Open-Launch Top ${projectData.dailyRanking} Daily Winner`}
+                        alt={`Benchlist Top ${projectData.dailyRanking} Daily Winner`}
                         className="hidden h-12 w-auto dark:block"
                       />
                     </div>
@@ -426,15 +418,40 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
                 </div>
               )}
 
-              {/* Social Links */}
-              {(projectData.githubUrl || projectData.twitterUrl) && (
+              {/* Links */}
+              {(projectData.githubUrl ||
+                projectData.twitterUrl ||
+                projectData.paperUrl ||
+                projectData.repoUrl) && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
-                      Socials
+                      Links
                     </span>
                     <div className="border-muted-foreground/30 mx-3 flex-1 border-b border-dotted"></div>
                     <div className="flex items-center gap-2">
+                      {projectData.repoUrl && (
+                        <a
+                          href={projectData.repoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-muted-foreground hover:text-foreground transition-colors"
+                          title="Source code"
+                        >
+                          <RiGithubFill className="h-4 w-4" />
+                        </a>
+                      )}
+                      {projectData.paperUrl && (
+                        <a
+                          href={projectData.paperUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-muted-foreground hover:text-foreground transition-colors"
+                          title="Research paper"
+                        >
+                          <RiFilePaper2Line className="h-4 w-4" />
+                        </a>
+                      )}
                       {projectData.githubUrl && (
                         <a
                           href={projectData.githubUrl}

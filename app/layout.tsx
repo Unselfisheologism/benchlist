@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { Outfit as FontHeading, Inter as FontSans } from "next/font/google"
+import { Space_Grotesk as FontHeading, Inter as FontSans } from "next/font/google"
 
 import PlausibleProvider from "next-plausible"
 import { Toaster } from "sonner"
@@ -22,21 +22,21 @@ const fontHeading = FontHeading({
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_URL!),
-  title: "Open Launch - Discover the Best Tech Products",
+  title: "Benchlist — The AI Benchmark Directory",
   description:
-    "Open Launch is a platform to discover and upvote the best tech products. Find top products launching daily.",
+    "Benchlist is the open directory of AI model benchmarks. Discover, track, and compare SWE-Bench, HLE, ARC-AGI, MMLU, and hundreds more.",
   openGraph: {
-    title: "Open Launch - Discover the Best Tech Products",
+    title: "Benchlist — The AI Benchmark Directory",
     description:
-      "Open Launch is a platform to discover and upvote the best tech products. Find top products launching daily.",
+      "The open directory of AI model benchmarks. Discover, track, and compare every public benchmark.",
     url: process.env.NEXT_PUBLIC_URL,
-    siteName: "Open Launch",
+    siteName: "Benchlist",
     images: [
       {
         url: "og.png",
         width: 1200,
         height: 630,
-        alt: "Open Launch - Discover the Best Tech Products",
+        alt: "Benchlist — The AI Benchmark Directory",
       },
     ],
     locale: "en_US",
@@ -44,9 +44,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Open Launch - Discover the Best Tech Products",
+    title: "Benchlist — The AI Benchmark Directory",
     description:
-      "Open Launch is a platform to discover and upvote the best tech products. Find top products launching daily.",
+      "The open directory of AI model benchmarks. Discover, track, and compare every public benchmark.",
     images: ["og.png"],
   },
 }
@@ -60,7 +60,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head>
         <PlausibleProvider
-          domain="open-launch.com"
+          domain="benchlist.dev"
           customDomain="https://plausible.dailypings.com"
           selfHosted={true}
           trackOutboundLinks={true}
@@ -74,12 +74,7 @@ export default function RootLayout({
         className={`font-sans antialiased ${fontSans.variable} ${fontHeading.variable} sm:overflow-y-scroll`}
         suppressHydrationWarning
       >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="light"
-          enableSystem
-          disableTransitionOnChange
-        >
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
           <div className="flex min-h-dvh flex-col">
             <Nav />
             <main className="flex-grow">{children}</main>

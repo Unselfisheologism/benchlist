@@ -13,7 +13,6 @@ async function fetchBenchmarkData(
   error?: string
 }> {
   try {
-    // Skip if no source URL
     if (!sourceUrl) return { benchmarkData: null, lastUpdated: null }
 
     const controller = new AbortController()
@@ -21,9 +20,7 @@ async function fetchBenchmarkData(
 
     const res = await fetch(sourceUrl, {
       signal: controller.signal,
-      headers: {
-        "User-Agent": "Benchlist/1.0 (benchmark-directory-bot)",
-      },
+      headers: { "User-Agent": "Benchlist/1.0 (benchmark-directory-bot)" },
     })
     clearTimeout(timeout)
 
@@ -35,19 +32,13 @@ async function fetchBenchmarkData(
     let benchmarkData: Record<string, unknown> = {}
 
     if (contentType.includes("application/json")) {
-      // JSON API endpoint
       const json = await res.json()
       benchmarkData = { raw: json, source: "json" }
     } else if (contentType.includes("text/html")) {
-      // Parse HTML page — extract basic metadata
       const html = await res.text()
-      // Try to extract title
       const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
-      // Try to extract description from meta tags
       const descMatch = html.match(/<meta[^>]*name="description"[^>]*content="([^"]+)"/i)
-      // Try to extract og:image
       const imageMatch = html.match(/<meta[^>]*property="og:image"[^>]*content="([^"]+)"/i)
-
       benchmarkData = {
         title: titleMatch?.[1]?.trim() || null,
         description: descMatch?.[1]?.trim() || null,
@@ -56,24 +47,19 @@ async function fetchBenchmarkData(
         url: sourceUrl,
         fetchedAt: new Date().toISOString(),
       }
-    } else if (contentType.includes("text/csv")) {
-      const text = await res.text()
-      benchmarkData = { csvPreview: text.slice(0, 5000), source: "csv" }
     } else {
       const text = await res.text()
       benchmarkData = { preview: text.slice(0, 5000), source: contentType }
     }
 
-    return {
-      benchmarkData,
-      lastUpdated: new Date().toISOString(),
-    }
+    return { benchmarkData, lastUpdated: new Date().toISOString() }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"
     return { benchmarkData: null, lastUpdated: null, error: message }
   }
 }
 
+// GET — auto-fetch cron (called by external cron like Vercel Cron)
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization")
   if (authHeader !== `Bearer ${process.env.CRON_API_KEY}`) {
@@ -81,15 +67,13 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Fetch all benchmarks that have a sourceUrl and need updating
-    // Update if never fetched, or last fetched more than 24 hours ago
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
 
     const benchmarksToUpdate = await db
       .select()
       .from(project)
       .where(or(isNull(project.lastFetchedAt), lt(project.lastFetchedAt, oneDayAgo)))
-      .limit(50) // Cap at 50 per run to avoid rate limits
+      .limit(50)
 
     const results = []
 
@@ -113,13 +97,11 @@ export async function GET(req: NextRequest) {
       results.push({
         name: bench.name,
         slug: bench.slug,
-        sourceUrl: bench.sourceUrl,
         success: !result.error,
         error: result.error || null,
       })
 
-      // Small delay between requests to be respectful
-      await new Promise((resolve) => setTimeout(resolve, 500))
+      await new Promise((r) => setTimeout(r, 500))
     }
 
     return NextResponse.json({
@@ -129,8 +111,59 @@ export async function GET(req: NextRequest) {
       results,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Internal server error"
-    console.error("Benchmark fetch cron error:", message)
+    const message = error instanceof Error ? error.message : "Internal error"
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+// POST — manual single-benchmark fetch (called from dashboard/submit form)
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json()
+    const { slug } = body
+
+    if (!slug) {
+      return NextResponse.json({ error: "slug is required" }, { status: 400 })
+    }
+
+    const benches = await db.select().from(project).where(eq(project.slug, slug)).limit(1)
+
+    if (benches.length === 0) {
+      return NextResponse.json({ error: "Benchmark not found" }, { status: 404 })
+    }
+
+    const bench = benches[0]
+    if (!bench.sourceUrl) {
+      return NextResponse.json(
+        { error: "No sourceUrl configured for this benchmark" },
+        { status: 400 },
+      )
+    }
+
+    const result = await fetchBenchmarkData(bench.sourceUrl)
+
+    if (result.error) {
+      return NextResponse.json({ error: result.error }, { status: 502 })
+    }
+
+    await db
+      .update(project)
+      .set({
+        benchmarkData: result.benchmarkData as Record<string, unknown>,
+        lastFetchedAt: new Date(),
+        lastUpdated: result.lastUpdated || bench.lastUpdated,
+        updatedAt: new Date(),
+      })
+      .where(eq(project.id, bench.id))
+
+    return NextResponse.json({
+      name: bench.name,
+      success: true,
+      lastFetchedAt: new Date().toISOString(),
+      benchmarkData: result.benchmarkData,
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Internal error"
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
