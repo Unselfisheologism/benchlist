@@ -7,7 +7,6 @@ import { ArrowLeft, Calendar, Clock } from "lucide-react"
 import { MDXRemote } from "next-mdx-remote/rsc"
 import remarkGfm from "remark-gfm"
 
-import { DOMAIN_AUTHORITY } from "@/lib/constants"
 import { createClient } from "@/lib/supabase/server"
 import { TableOfContents } from "@/components/blog/table-of-contents"
 

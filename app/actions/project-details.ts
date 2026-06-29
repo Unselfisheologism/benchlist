@@ -2,13 +2,6 @@
 
 import { createClient } from "@/lib/supabase/server"
 
-// Constantes pour les statuts de lancement
-const launchStatus = {
-  SCHEDULED: "scheduled",
-  ONGOING: "ongoing",
-  LAUNCHED: "launched",
-} as const
-
 interface ProjectBySlugResult {
   id: string
   slug: string

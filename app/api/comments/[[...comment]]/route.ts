@@ -5,7 +5,6 @@ import { NextComment } from "@fuma-comment/next"
 
 import { checkCommentRateLimit } from "@/lib/comment-rate-limit"
 import { commentAuth, commentStorage } from "@/lib/comment.config"
-import { extractTextFromContent } from "@/lib/content-utils"
 
 /**
  * Supprime tous les liens du contenu en transformant les nœuds "link" en texte simple
@@ -109,9 +108,6 @@ export async function POST(req: NextRequest, context: CommentContext) {
           { status: 429 },
         )
       }
-
-      // The project ID is the first segment in commentParams
-      const projectId = commentParams[0]
 
       try {
         // Lire le body de la requête

@@ -1,9 +1,5 @@
 // Rate limiting disabled — always allows requests
-export async function checkRateLimit(
-  _identifier: string,
-  _limit: number,
-  _window: number,
-): Promise<{
+export async function checkRateLimit(): Promise<{
   success: boolean
   remaining: number
   reset: number

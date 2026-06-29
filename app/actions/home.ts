@@ -11,10 +11,6 @@ const launchStatus = {
   LAUNCHED: "launched",
 } as const
 
-const launchType = {
-  FREE: "free",
-} as const
-
 async function getCurrentUserId() {
   const supabase = await createClient()
   const {
