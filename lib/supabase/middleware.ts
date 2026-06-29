@@ -7,10 +7,10 @@ export async function updateSession(request: NextRequest) {
     request,
   })
 
-  // Skip Supabase client during build or when env vars are missing/empty
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!supabaseUrl || !supabaseKey || !supabaseUrl.startsWith("http")) {
+  // Skip during build when env vars are not fully configured
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ""
+  if (!supabaseUrl || !supabaseKey) {
     return supabaseResponse
   }
 
