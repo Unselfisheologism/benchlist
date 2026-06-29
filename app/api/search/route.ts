@@ -30,18 +30,21 @@ const getSearchResults = unstable_cache(
       const supabase = await createClient()
 
       // Rechercher dans les projets
-      const { data: projects } = await supabase
+      const { data: projects } = (await supabase
         .from("projects")
         .select("id, name, slug, description, logo_url")
         .ilike("name", `%${query}%`)
-        .limit(limit)
+        .limit(limit)) as {
+        data:
+          { id: string; name: string; slug: string; description: string; logo_url: string }[] | null
+      }
 
       // Rechercher dans les catégories
-      const { data: categories } = await supabase
+      const { data: categories } = (await supabase
         .from("categories")
         .select("id, name")
         .ilike("name", `%${query}%`)
-        .limit(limit)
+        .limit(limit)) as { data: { id: string; name: string }[] | null }
 
       // Formater les résultats
       const formattedProjects: SearchResult[] = (projects || []).map((proj) => ({
