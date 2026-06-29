@@ -31,10 +31,10 @@ async function generateUniqueSlug(name: string): Promise<string> {
 }
 
 // Get all categories
-export async function getAllCategories() {
+export async function getAllCategories(): Promise<{ id: string; name: string; slug: string }[]> {
   const supabase = await createClient()
-  const { data: categories } = await supabase.from("categories").select("*").order("name")
-  return categories || []
+  const { data } = await supabase.from("categories").select("id, name, slug").order("name")
+  return (data as { id: string; name: string; slug: string }[]) || []
 }
 
 // Get top categories based on project count
