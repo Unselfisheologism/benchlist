@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 
@@ -11,10 +11,11 @@ import {
   RiShieldUserLine,
   RiUserLine,
 } from "@remixicon/react"
+import type { User } from "@supabase/supabase-js"
 import { Loader2, X } from "lucide-react"
 import { toast } from "sonner"
 
-import { changePassword, signOut, updateUser, useSession } from "@/lib/auth-client"
+import { createClient } from "@/lib/supabase/client"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -30,12 +31,20 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
 export default function Settings() {
-  const { data: session } = useSession()
+  const [user, setUser] = useState<User | null>(null)
   const router = useRouter()
 
-  if (!session) {
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data }) => setUser(data.user))
+  }, [])
+
+  if (!user) {
     return null
   }
+
+  const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User"
+  const displayImage = user?.user_metadata?.avatar_url || user?.user_metadata?.picture
 
   return (
     <div className="mx-auto min-h-screen max-w-6xl px-4 py-10">
@@ -63,18 +72,18 @@ export default function Settings() {
               <div className="flex items-center gap-4">
                 <Avatar className="h-14 w-14">
                   <AvatarImage
-                    src={session.user.image || undefined}
+                    src={displayImage || undefined}
                     alt="Avatar"
                     className="object-cover"
                   />
                   <AvatarFallback className="bg-primary/10 text-primary">
-                    {session.user.name?.charAt(0)}
+                    {displayName?.charAt(0)}
                   </AvatarFallback>
                 </Avatar>
                 <div>
-                  <p className="text-lg font-medium">{session.user.name}</p>
+                  <p className="text-lg font-medium">{displayName}</p>
                   <p className="text-muted-foreground max-w-[170px] truncate text-sm">
-                    {session.user.email}
+                    {user?.email}
                   </p>
                 </div>
               </div>
@@ -127,15 +136,11 @@ export default function Settings() {
               <Button
                 variant="destructive"
                 className="hover:bg-destructive/90 cursor-pointer gap-2"
-                onClick={() => {
-                  signOut({
-                    fetchOptions: {
-                      onSuccess: () => {
-                        router.push("/")
-                        router.refresh()
-                      },
-                    },
-                  })
+                onClick={async () => {
+                  const supabase = createClient()
+                  await supabase.auth.signOut()
+                  router.push("/")
+                  router.refresh()
                 }}
               >
                 <RiLogoutCircleLine className="h-4 w-4" />
@@ -150,13 +155,18 @@ export default function Settings() {
 }
 
 function EditProfileDialog() {
-  const { data: session } = useSession()
+  const [user, setUser] = useState<User | null>(null)
   const router = useRouter()
   const [name, setName] = useState<string>("")
   const [image, setImage] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data }) => setUser(data.user))
+  }, [])
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -179,6 +189,8 @@ function EditProfileDialog() {
     })
   }
 
+  const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User"
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -199,7 +211,7 @@ function EditProfileDialog() {
             </Label>
             <Input
               id="name"
-              placeholder={session?.user.name}
+              placeholder={displayName}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="border dark:border-zinc-700"
@@ -242,10 +254,25 @@ function EditProfileDialog() {
             onClick={async () => {
               setIsLoading(true)
               try {
-                await updateUser({
-                  name: name || undefined,
-                  image: image ? await convertImageToBase64(image) : undefined,
-                })
+                const supabase = createClient()
+                const updateData: Record<string, string> = {}
+
+                if (name) {
+                  updateData.full_name = name
+                }
+
+                if (image) {
+                  const base64 = await convertImageToBase64(image)
+                  updateData.avatar_url = base64
+                }
+
+                if (Object.keys(updateData).length > 0) {
+                  const { error } = await supabase.auth.updateUser({
+                    data: updateData,
+                  })
+                  if (error) throw error
+                }
+
                 toast.success("Profile updated successfully")
                 router.refresh()
                 setOpen(false)
@@ -342,10 +369,11 @@ function ChangePasswordDialog() {
               }
               setLoading(true)
               try {
-                await changePassword({
-                  currentPassword,
-                  newPassword,
+                const supabase = createClient()
+                const { error } = await supabase.auth.updateUser({
+                  password: newPassword,
                 })
+                if (error) throw error
                 toast.success("Password changed successfully")
                 setOpen(false)
               } catch {

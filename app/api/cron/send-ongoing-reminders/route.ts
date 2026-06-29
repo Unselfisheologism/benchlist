@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
-import { db } from "@/drizzle/db"
-import { launchStatus, project, user } from "@/drizzle/db/schema"
+import { createClient } from "@supabase/supabase-js"
 import { endOfDay, startOfDay } from "date-fns"
-import { and, eq, gte, lt } from "drizzle-orm"
 
 import { sendLaunchReminderEmail } from "@/lib/transactional-emails"
 
@@ -18,6 +16,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    // Use service role client to look up user data from auth.users
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    )
+
     const now = new Date()
     const today = startOfDay(now)
     const endOfToday = endOfDay(now)
@@ -27,24 +31,14 @@ export async function GET(request: NextRequest) {
       `Looking for projects ongoing from: ${today.toISOString()} to ${endOfToday.toISOString()}`,
     )
 
-    const ongoingProjects = await db
-      .select({
-        projectId: project.id,
-        projectName: project.name,
-        projectSlug: project.slug,
-        projectCreatorId: project.createdBy,
-      })
-      .from(project)
-      .where(
-        and(
-          eq(project.launchStatus, launchStatus.ONGOING),
-          gte(project.scheduledLaunchDate, today),
-          lt(project.scheduledLaunchDate, endOfToday),
-        ),
-      )
-      .execute()
+    const { data: ongoingProjects } = await supabaseAdmin
+      .from("projects")
+      .select("id, name, slug, created_by")
+      .eq("launch_status", "ongoing")
+      .gte("scheduled_launch_date", today.toISOString())
+      .lt("scheduled_launch_date", endOfToday.toISOString())
 
-    if (ongoingProjects.length === 0) {
+    if (!ongoingProjects || ongoingProjects.length === 0) {
       console.log("No ongoing projects found to remind.")
       return NextResponse.json({ message: "No ongoing projects to remind." })
     }
@@ -54,44 +48,42 @@ export async function GET(request: NextRequest) {
     let emailsFailedCount = 0
 
     for (const proj of ongoingProjects) {
-      if (!proj.projectCreatorId) {
-        console.warn(`Skipping project ${proj.projectName} due to missing creator ID.`)
+      if (!proj.created_by) {
+        console.warn(`Skipping project ${proj.name} due to missing creator ID.`)
         continue
       }
 
-      const projectCreator = await db
-        .select({
-          email: user.email,
-          name: user.name,
-        })
-        .from(user)
-        .where(eq(user.id, proj.projectCreatorId))
-        .limit(1)
-        .then((res) => res[0])
+      // Look up user via Supabase Auth Admin API
+      const { data: userData } = await supabaseAdmin.auth.admin.getUserById(proj.created_by)
 
-      if (!projectCreator || !projectCreator.email) {
+      if (!userData?.user?.email) {
         console.warn(
-          `User not found or email missing for creator ID ${proj.projectCreatorId} of project ${proj.projectName}.`,
+          `User not found or email missing for creator ID ${proj.created_by} of project ${proj.name}.`,
         )
         emailsFailedCount++
         continue
       }
 
+      const projectCreator = {
+        email: userData.user.email,
+        name: userData.user.user_metadata?.full_name || userData.user.email,
+      }
+
       try {
         console.log(
-          `Sending launch reminder email to ${projectCreator.email} for project ${proj.projectName}`,
+          `Sending launch reminder email to ${projectCreator.email} for project ${proj.name}`,
         )
 
         await sendLaunchReminderEmail({
           user: { email: projectCreator.email, name: projectCreator.name },
-          projectName: proj.projectName,
-          projectSlug: proj.projectSlug,
+          projectName: proj.name,
+          projectSlug: proj.slug,
         })
         emailsSentCount++
       } catch (error) {
         emailsFailedCount++
         console.error(
-          `Failed to send launch reminder email for project ${proj.projectName} to ${projectCreator.email}:`,
+          `Failed to send launch reminder email for project ${proj.name} to ${projectCreator.email}:`,
           error,
         )
       }

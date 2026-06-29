@@ -80,8 +80,10 @@ const commentHandler = NextComment({
   storage: commentStorage,
 })
 
+type CommentContext = { params: Promise<{ comment?: string[] }> }
+
 // Intercept POST requests to add Discord notification and rate limiting
-export async function POST(req: NextRequest, context: any) {
+export async function POST(req: NextRequest, context: CommentContext) {
   try {
     // Get parameters and user session
     const params = await context.params
@@ -135,7 +137,7 @@ export async function POST(req: NextRequest, context: any) {
         })
 
         // Passer la nouvelle requête au handler
-        return commentHandler.POST(modifiedReq, context)
+        return commentHandler.POST(modifiedReq, context as any)
       } catch (error) {
         console.error("Error processing comment:", error)
       }
@@ -143,26 +145,31 @@ export async function POST(req: NextRequest, context: any) {
 
     // Pour tous les autres cas (pas de rate limiting), traiter quand même les liens
     const processedReq = await processRequestWithLinkRemoval(req)
-    return commentHandler.POST(processedReq, context)
+    return commentHandler.POST(processedReq, context as any)
   } catch (error) {
     console.error("Error intercepting request:", error)
     // En cas d'erreur, passer la requête originale
-    return commentHandler.POST(req, context)
+    return commentHandler.POST(req, context as any)
   }
 }
 
 // Intercept PATCH requests (édition de commentaires) pour aussi supprimer les liens
-export async function PATCH(req: NextRequest, context: any) {
+export async function PATCH(req: NextRequest, context: CommentContext) {
   try {
     // Traiter la requête pour supprimer les liens
     const processedReq = await processRequestWithLinkRemoval(req)
-    return commentHandler.PATCH(processedReq, context)
+    return commentHandler.PATCH(processedReq, context as any)
   } catch (error) {
     console.error("Error intercepting PATCH request:", error)
     // En cas d'erreur, passer la requête originale
-    return commentHandler.PATCH(req, context)
+    return commentHandler.PATCH(req, context as any)
   }
 }
 
-// Export other methods without modification
-export const { GET, DELETE } = commentHandler
+// Wrap GET and DELETE to match our typed context
+export async function GET(req: NextRequest, context: CommentContext) {
+  return commentHandler.GET(req, context as any)
+}
+export async function DELETE(req: NextRequest, context: CommentContext) {
+  return commentHandler.DELETE(req, context as any)
+}

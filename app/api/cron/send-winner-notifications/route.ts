@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
-import { db } from "@/drizzle/db"
-import { launchStatus, project, user } from "@/drizzle/db/schema"
+import { createClient } from "@supabase/supabase-js"
 import { endOfDay, startOfDay, subDays } from "date-fns"
-import { and, eq, gte, inArray, lt } from "drizzle-orm"
 
 import { sendWinnerBadgeEmail } from "@/lib/transactional-emails"
 
@@ -18,6 +16,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    // Use service role client to look up user data from auth.users
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    )
+
     const now = new Date()
     const yesterday = subDays(startOfDay(now), 1)
     const endOfYesterday = endOfDay(yesterday)
@@ -27,27 +31,16 @@ export async function GET(request: NextRequest) {
       `Looking for winners from: ${yesterday.toISOString()} to ${endOfYesterday.toISOString()}`,
     )
 
-    const winners = await db
-      .select({
-        projectId: project.id,
-        projectName: project.name,
-        projectSlug: project.slug,
-        projectRanking: project.dailyRanking,
-        projectCreatorId: project.createdBy,
-        projectLaunchType: project.launchType,
-      })
-      .from(project)
-      .where(
-        and(
-          eq(project.launchStatus, launchStatus.LAUNCHED),
-          inArray(project.dailyRanking, [1, 2, 3]),
-          gte(project.scheduledLaunchDate, yesterday),
-          lt(project.scheduledLaunchDate, startOfDay(now)),
-        ),
-      )
-      .execute()
+    // Find winning projects (launched, ranking 1-3, launched yesterday)
+    const { data: winners } = await supabaseAdmin
+      .from("projects")
+      .select("id, name, slug, daily_ranking, created_by, launch_type")
+      .eq("launch_status", "launched")
+      .in("daily_ranking", [1, 2, 3])
+      .gte("scheduled_launch_date", yesterday.toISOString())
+      .lt("scheduled_launch_date", startOfDay(now).toISOString())
 
-    if (winners.length === 0) {
+    if (!winners || winners.length === 0) {
       console.log("No new winners found to notify.")
       return NextResponse.json({ message: "No new winners to notify." })
     }
@@ -57,46 +50,42 @@ export async function GET(request: NextRequest) {
     let emailsFailedCount = 0
 
     for (const winner of winners) {
-      if (!winner.projectCreatorId || !winner.projectRanking) {
-        console.warn(`Skipping project ${winner.projectName} due to missing creator ID or ranking.`)
+      if (!winner.created_by || !winner.daily_ranking) {
+        console.warn(`Skipping project ${winner.name} due to missing creator ID or ranking.`)
         continue
       }
 
-      const projectCreator = await db
-        .select({
-          email: user.email,
-          name: user.name,
-        })
-        .from(user)
-        .where(eq(user.id, winner.projectCreatorId))
-        .limit(1)
-        .then((res) => res[0])
+      // Look up user via Supabase Auth Admin API
+      const { data: userData } = await supabaseAdmin.auth.admin.getUserById(winner.created_by)
 
-      if (!projectCreator || !projectCreator.email) {
+      if (!userData?.user?.email) {
         console.warn(
-          `User not found or email missing for creator ID ${winner.projectCreatorId} of project ${winner.projectName}.`,
+          `User not found or email missing for creator ID ${winner.created_by} of project ${winner.name}.`,
         )
         emailsFailedCount++
         continue
       }
 
+      const projectCreator = {
+        email: userData.user.email,
+        name: userData.user.user_metadata?.full_name || userData.user.email,
+      }
+
       try {
-        console.log(
-          `Sending winner email to ${projectCreator.email} for project ${winner.projectName}`,
-        )
+        console.log(`Sending winner email to ${projectCreator.email} for project ${winner.name}`)
 
         await sendWinnerBadgeEmail({
           user: { email: projectCreator.email, name: projectCreator.name },
-          projectName: winner.projectName,
-          projectSlug: winner.projectSlug,
-          ranking: winner.projectRanking,
-          launchType: winner.projectLaunchType,
+          projectName: winner.name,
+          projectSlug: winner.slug,
+          ranking: winner.daily_ranking,
+          launchType: winner.launch_type,
         })
         emailsSentCount++
       } catch (error) {
         emailsFailedCount++
         console.error(
-          `Failed to send winner email for project ${winner.projectName} to ${projectCreator.email}:`,
+          `Failed to send winner email for project ${winner.name} to ${projectCreator.email}:`,
           error,
         )
       }

@@ -107,7 +107,9 @@ export default async function WinnersPage({
                       thumbnail={winner.logoUrl}
                       dailyRanking={winner.dailyRanking || index + 1}
                       upvoteCount={winner.upvoteCount}
-                      commentCount={winner.commentCount || 0}
+                      commentCount={
+                        (winner as unknown as { comments_count?: number }).comments_count ?? 0
+                      }
                     />
                   </div>
                 ))}

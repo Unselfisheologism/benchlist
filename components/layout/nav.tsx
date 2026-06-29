@@ -1,4 +1,3 @@
-import { headers } from "next/headers"
 import Link from "next/link"
 
 import {
@@ -8,9 +7,8 @@ import {
   RiMenuLine,
   RiUserAddLine,
 } from "@remixicon/react"
-import { User } from "better-auth"
 
-import { auth } from "@/lib/auth"
+import { createClient } from "@/lib/supabase/server"
 import {
   Sheet,
   SheetClose,
@@ -28,10 +26,10 @@ import { SearchCommand } from "./search-command"
 import { UserNav } from "./user-nav"
 
 export default async function Nav() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  })
-  const user = session?.user
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
   return (
     <nav className="bg-background/95 border-border/40 sticky top-0 z-50 border-b backdrop-blur-sm">
@@ -48,15 +46,15 @@ export default async function Nav() {
           </Link>
 
           {/* Main Navigation */}
-          <NavMenu showDashboard={!!session} />
+          <NavMenu showDashboard={!!user} />
         </div>
 
         {/* Desktop */}
         <div className="hidden items-center gap-3 md:flex">
-          {session && <SearchCommand />}
+          {user && <SearchCommand />}
           <ThemeToggle />
-          {session ? (
-            <UserNav user={user as User} />
+          {user ? (
+            <UserNav user={user as unknown as Record<string, unknown>} />
           ) : (
             <>
               <Button variant="ghost" size="sm" asChild>
@@ -71,8 +69,8 @@ export default async function Nav() {
 
         {/* Mobile */}
         <div className="flex items-center md:hidden">
-          {session && <UserNav user={user as User} />}
-          {!session && (
+          {user && <UserNav user={user as unknown as Record<string, unknown>} />}
+          {!user && (
             <Button variant="default" size="sm" asChild className="mr-2">
               <Link href="/sign-in">
                 <RiLoginBoxLine className="h-4 w-4" />
@@ -95,7 +93,7 @@ export default async function Nav() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto">
-                  {session && (
+                  {user && (
                     <>
                       <div className="mt-2 mb-6 px-6">
                         <SearchCommand />
@@ -103,7 +101,7 @@ export default async function Nav() {
                       <div className="bg-border my-4 h-px" />
                     </>
                   )}
-                  {session && (
+                  {user && (
                     <div className="mb-4">
                       <div className="mb-2 px-6">
                         <h3 className="text-muted-foreground mb-2 text-xs font-medium">
@@ -152,7 +150,7 @@ export default async function Nav() {
                       <ThemeToggleMenu />
                     </div>
 
-                    {!session && (
+                    {!user && (
                       <div className="space-y-1">
                         <SheetClose asChild>
                           <Link

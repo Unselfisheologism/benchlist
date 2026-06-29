@@ -1,16 +1,22 @@
 "use server"
 
-import { headers } from "next/headers"
-
-import { launchType as LaunchTypeEnum } from "@/drizzle/db/schema"
 import { z } from "zod"
 
-import { auth } from "@/lib/auth"
 import { notifyDiscordLaunch as sendRealDiscordLaunchNotification } from "@/lib/discord-notification"
+import { createClient } from "@/lib/supabase/server"
 
-const LaunchTypeZodEnum = z.enum(Object.values(LaunchTypeEnum) as [string, ...string[]], {
-  errorMap: () => ({ message: "Invalid launch type specified." }),
-})
+const launchType = {
+  FREE: "free",
+  PREMIUM: "premium",
+  PREMIUM_PLUS: "premium_plus",
+} as const
+
+const LaunchTypeZodEnum = z.enum(
+  [launchType.FREE, launchType.PREMIUM, launchType.PREMIUM_PLUS] as [string, ...string[]],
+  {
+    errorMap: () => ({ message: "Invalid launch type specified." }),
+  },
+)
 
 const DiscordNotificationSchema = z.object({
   projectName: z
@@ -30,15 +36,17 @@ export async function notifyDiscordLaunch(
   websiteUrl: string,
   projectUrl: string,
 ) {
-  const requestHeaders = await headers()
-  const session = await auth.api.getSession({ headers: requestHeaders })
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  if (!session?.user?.id) {
+  if (!user?.id) {
     console.error("[DiscordNotify] Unauthorized attempt: No active session.")
     return { success: false, error: "Unauthorized: User not authenticated." }
   }
 
-  const authenticatedUserId = session.user.id
+  const authenticatedUserId = user.id
 
   const validation = DiscordNotificationSchema.safeParse({
     projectName,

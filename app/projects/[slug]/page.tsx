@@ -1,27 +1,18 @@
 /* eslint-disable @next/next/no-img-element */
 import { Metadata, ResolvingMetadata } from "next"
-import { headers } from "next/headers"
 import Image from "next/image"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
-import {
-  RiFilePaper2Line,
-  RiGithubFill,
-  RiGlobalLine,
-  RiHashtag,
-  RiTwitterFill,
-  RiVipCrownLine,
-} from "@remixicon/react"
+import { RiGlobalLine, RiHashtag, RiVipCrownLine } from "@remixicon/react"
 import { format } from "date-fns"
 
-import { auth } from "@/lib/auth"
 import { getProjectWebsiteRelAttribute } from "@/lib/link-utils"
+import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import { RichTextDisplay } from "@/components/ui/rich-text-editor"
 import { EditButton } from "@/components/project/edit-button"
 import { ProjectComments } from "@/components/project/project-comments"
-import { ProjectImageWithLoader } from "@/components/project/project-image-with-loader"
 import { ShareButton } from "@/components/project/share-button"
 import { UpvoteButton } from "@/components/project/upvote-button"
 import { SponsorCards } from "@/components/shared/sponsor-cards"
@@ -56,20 +47,20 @@ export async function generateMetadata(
 
   return {
     title: `${projectData.name} | Benchlist`,
-    description: stripHtml(projectData.description),
+    description: stripHtml(projectData.description ?? ""),
     openGraph: {
       title: `${projectData.name} on Benchlist`,
-      description: stripHtml(projectData.description),
+      description: stripHtml(projectData.description ?? ""),
       images: [
-        projectData.productImage || projectData.coverImageUrl || projectData.logoUrl,
+        (projectData.productImage || projectData.coverImageUrl || projectData.logoUrl) as string,
         ...previousImages,
       ],
     },
     twitter: {
       card: "summary_large_image",
       title: `${projectData.name} on Benchlist`,
-      description: stripHtml(projectData.description),
-      images: [projectData.productImage || projectData.logoUrl],
+      description: stripHtml(projectData.description ?? ""),
+      images: [(projectData.productImage || projectData.logoUrl) as string],
     },
   }
 }
@@ -82,27 +73,30 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
     notFound()
   }
 
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  })
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  const hasUpvoted = session?.user ? await hasUserUpvoted(projectData.id) : false
+  const hasUpvoted = user ? await hasUserUpvoted(projectData.id) : false
 
-  const scheduledDate = projectData.scheduledLaunchDate
-    ? new Date(projectData.scheduledLaunchDate)
+  const scheduledDate = projectData.scheduled_launch_date
+    ? new Date(projectData.scheduled_launch_date)
     : null
 
-  const isActiveLaunch = projectData.launchStatus === "ongoing"
-
-  const isScheduled = projectData.launchStatus === "scheduled"
-
-  const isOwner = session?.user?.id === projectData.createdBy
+  const isOwner = user?.id === projectData.created_by
+  const launchStatus = (projectData.launch_status ?? projectData.launchStatus) as string
+  const launchType = (projectData.launch_type ?? projectData.launchType) as string | undefined
+  const dailyRanking = (projectData.daily_ranking ?? projectData.dailyRanking) as number | null
 
   const websiteRelAttribute = getProjectWebsiteRelAttribute({
-    launchStatus: projectData.launchStatus,
-    launchType: projectData.launchType,
-    dailyRanking: projectData.dailyRanking,
+    launchStatus,
+    launchType,
+    dailyRanking,
   })
+
+  const isActiveLaunch = launchStatus === "ongoing"
+  const isScheduled = launchStatus === "scheduled"
 
   return (
     <div className="bg-background min-h-screen">
@@ -119,7 +113,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
                   {/* Logo */}
                   <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg border border-gray-200 dark:border-transparent">
                     <Image
-                      src={projectData.logoUrl}
+                      src={projectData.logo_url as string}
                       alt={`${projectData.name} Logo`}
                       width={64}
                       height={64}
@@ -154,10 +148,10 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
 
                 {/* Right side: Actions */}
                 <div className="ml-6 flex items-center gap-3">
-                  {projectData.websiteUrl && (
+                  {projectData.website_url && (
                     <Button variant="outline" size="sm" asChild className="h-9 px-3">
                       <a
-                        href={projectData.websiteUrl}
+                        href={projectData.website_url}
                         target="_blank"
                         rel={websiteRelAttribute}
                         className="flex items-center gap-2"
@@ -171,13 +165,15 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
                   {isActiveLaunch ? (
                     <UpvoteButton
                       projectId={projectData.id}
-                      upvoteCount={projectData.upvoteCount}
+                      upvoteCount={(projectData.upvote_count as number) ?? 0}
                       initialUpvoted={hasUpvoted}
-                      isAuthenticated={Boolean(session?.user)}
+                      isAuthenticated={Boolean(user)}
                     />
                   ) : (
                     <div className="border-muted bg-muted flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium">
-                      <span className="text-foreground">{projectData.upvoteCount} upvotes</span>
+                      <span className="text-foreground">
+                        {(projectData.upvote_count as number) ?? 0} upvotes
+                      </span>
                     </div>
                   )}
                 </div>
@@ -189,7 +185,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
                 <div className="flex flex-col items-start gap-2">
                   <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg border border-gray-200 dark:border-transparent">
                     <Image
-                      src={projectData.logoUrl}
+                      src={projectData.logo_url as string}
                       alt={`${projectData.name} Logo`}
                       width={64}
                       height={64}
@@ -216,10 +212,10 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
 
                 {/* Actions - Same width buttons side by side */}
                 <div className="flex gap-3">
-                  {projectData.websiteUrl && (
+                  {projectData.website_url && (
                     <Button variant="outline" size="sm" asChild className="h-9 px-3">
                       <a
-                        href={projectData.websiteUrl}
+                        href={projectData.website_url}
                         target="_blank"
                         rel={websiteRelAttribute}
                         className="flex items-center justify-center gap-2"
@@ -233,13 +229,15 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
                   {isActiveLaunch ? (
                     <UpvoteButton
                       projectId={projectData.id}
-                      upvoteCount={projectData.upvoteCount}
+                      upvoteCount={(projectData.upvote_count as number) ?? 0}
                       initialUpvoted={hasUpvoted}
-                      isAuthenticated={Boolean(session?.user)}
+                      isAuthenticated={Boolean(user)}
                     />
                   ) : (
                     <div className="border-muted bg-muted flex h-9 flex-1 items-center justify-center gap-2 rounded-lg border px-4 text-sm font-medium">
-                      <span className="text-foreground">{projectData.upvoteCount} upvotes</span>
+                      <span className="text-foreground">
+                        {(projectData.upvote_count as number) ?? 0} upvotes
+                      </span>
                     </div>
                   )}
                 </div>
@@ -250,9 +248,9 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
             <div className="space-y-6 pb-12">
               {/* Badge SVG pour les gagnants top 3 uniquement */}
               {isOwner &&
-                projectData.launchStatus === "launched" &&
-                projectData.dailyRanking &&
-                projectData.dailyRanking <= 3 && (
+                launchStatus === "launched" &&
+                dailyRanking !== null &&
+                dailyRanking <= 3 && (
                   <div className="border-primary/30 bg-primary/10 text-primary flex flex-col items-center justify-between gap-2 rounded-lg border p-2 sm:flex-row sm:items-center sm:gap-3">
                     <span className="text-center text-sm font-medium">
                       Congratulations! You earned a badge for your ranking.
@@ -281,16 +279,9 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
                 </div>
               )}
 
-              {/* Product Image / Banner */}
-              {(projectData.productImage || projectData.coverImageUrl) && (
-                <ProjectImageWithLoader
-                  src={(projectData.productImage || projectData.coverImageUrl)!}
-                  alt={`${projectData.name} - Product Image`}
-                />
-              )}
               {/* Description */}
               <div className="w-full">
-                <RichTextDisplay content={projectData.description} />
+                <RichTextDisplay content={projectData.description ?? ""} />
               </div>
 
               {/* Edit button pour owners */}
@@ -298,7 +289,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
                 <div>
                   <EditButton
                     projectId={projectData.id}
-                    initialDescription={projectData.description}
+                    initialDescription={projectData.description ?? ""}
                     initialCategories={projectData.categories}
                     isOwner={isOwner}
                     isScheduled={isScheduled}
@@ -320,27 +311,25 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
           <div className="lg:sticky lg:top-14 lg:h-fit">
             <div className="space-y-6 py-6">
               {/* Achievement Badge */}
-              {projectData.launchStatus === "launched" &&
-                projectData.dailyRanking &&
-                projectData.dailyRanking <= 3 && (
-                  <div className="space-y-3">
-                    <h3 className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
-                      Achievement
-                    </h3>
-                    <div className="flex">
-                      <img
-                        src={`/images/badges/top${projectData.dailyRanking}-light.svg`}
-                        alt={`Benchlist Top ${projectData.dailyRanking} Daily Winner`}
-                        className="h-12 w-auto dark:hidden"
-                      />
-                      <img
-                        src={`/images/badges/top${projectData.dailyRanking}-dark.svg`}
-                        alt={`Benchlist Top ${projectData.dailyRanking} Daily Winner`}
-                        className="hidden h-12 w-auto dark:block"
-                      />
-                    </div>
+              {launchStatus === "launched" && dailyRanking !== null && dailyRanking <= 3 && (
+                <div className="space-y-3">
+                  <h3 className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
+                    Achievement
+                  </h3>
+                  <div className="flex">
+                    <img
+                      src={`/images/badges/top${dailyRanking}-light.svg`}
+                      alt={`Benchlist Top ${dailyRanking} Daily Winner`}
+                      className="h-12 w-auto dark:hidden"
+                    />
+                    <img
+                      src={`/images/badges/top${dailyRanking}-dark.svg`}
+                      alt={`Benchlist Top ${dailyRanking} Daily Winner`}
+                      className="hidden h-12 w-auto dark:block"
+                    />
                   </div>
-                )}
+                </div>
+              )}
 
               {/* Publisher */}
               <div className="space-y-3">
@@ -384,116 +373,6 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
                     <span className="text-foreground text-sm font-medium">
                       {format(scheduledDate, "yyyy-MM-dd")}
                     </span>
-                  </div>
-                </div>
-              )}
-
-              {/* Platform */}
-              {projectData.platforms && projectData.platforms.length > 0 && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
-                      Platform
-                    </span>
-                    <div className="border-muted-foreground/30 mx-3 flex-1 border-b border-dotted"></div>
-                    <span className="text-foreground text-sm font-medium capitalize">
-                      {projectData.platforms[0]}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* Pricing */}
-              {projectData.pricing && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
-                      Pricing
-                    </span>
-                    <div className="border-muted-foreground/30 mx-3 flex-1 border-b border-dotted"></div>
-                    <span className="text-foreground text-sm font-medium capitalize">
-                      {projectData.pricing}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* Links */}
-              {(projectData.githubUrl ||
-                projectData.twitterUrl ||
-                projectData.paperUrl ||
-                projectData.repoUrl) && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
-                      Links
-                    </span>
-                    <div className="border-muted-foreground/30 mx-3 flex-1 border-b border-dotted"></div>
-                    <div className="flex items-center gap-2">
-                      {projectData.repoUrl && (
-                        <a
-                          href={projectData.repoUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-muted-foreground hover:text-foreground transition-colors"
-                          title="Source code"
-                        >
-                          <RiGithubFill className="h-4 w-4" />
-                        </a>
-                      )}
-                      {projectData.paperUrl && (
-                        <a
-                          href={projectData.paperUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-muted-foreground hover:text-foreground transition-colors"
-                          title="Research paper"
-                        >
-                          <RiFilePaper2Line className="h-4 w-4" />
-                        </a>
-                      )}
-                      {projectData.githubUrl && (
-                        <a
-                          href={projectData.githubUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-muted-foreground hover:text-foreground transition-colors"
-                          aria-label="GitHub"
-                        >
-                          <RiGithubFill className="h-4 w-4" />
-                        </a>
-                      )}
-                      {projectData.twitterUrl && (
-                        <a
-                          href={projectData.twitterUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-muted-foreground hover:text-foreground transition-colors"
-                          aria-label="Twitter"
-                        >
-                          <RiTwitterFill className="h-4 w-4" />
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Tech Stack */}
-              {projectData.techStack && projectData.techStack.length > 0 && (
-                <div className="space-y-3">
-                  <h3 className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
-                    Tech Stack
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {projectData.techStack.slice(0, 6).map((tech) => (
-                      <span
-                        key={tech}
-                        className="bg-muted text-muted-foreground inline-flex items-center rounded-md px-2 py-1 text-xs"
-                      >
-                        #{tech}
-                      </span>
-                    ))}
                   </div>
                 </div>
               )}

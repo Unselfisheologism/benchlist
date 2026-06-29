@@ -2,9 +2,23 @@
  * Utility for sending notifications to Discord via webhook
  */
 
-import { db } from "@/drizzle/db"
-import { launchType as LaunchTypeEnum, project, user } from "@/drizzle/db/schema"
-import { eq } from "drizzle-orm"
+import { createClient as createSupabaseClient, SupabaseClient } from "@supabase/supabase-js"
+
+// Lazily initialized to avoid build-time errors when env vars are missing
+let supabaseAdmin: SupabaseClient | null = null
+
+function getSupabaseAdmin(): SupabaseClient {
+  if (!supabaseAdmin) {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      throw new Error("Supabase environment variables are not set")
+    }
+    supabaseAdmin = createSupabaseClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+    )
+  }
+  return supabaseAdmin
+}
 
 interface DiscordEmbed {
   title: string
@@ -26,11 +40,14 @@ interface DiscordMessage {
   embeds: DiscordEmbed[]
 }
 
+const launchType = {
+  FREE: "free",
+  PREMIUM: "premium",
+  PREMIUM_PLUS: "premium_plus",
+} as const
+
 /**
  * Send a Discord notification for a new comment
- * @param projectId ID of the project where the comment was posted
- * @param userId ID of the user who posted the comment
- * @param commentText Text of the comment
  */
 export async function sendDiscordCommentNotification(
   projectId: string,
@@ -39,94 +56,67 @@ export async function sendDiscordCommentNotification(
 ): Promise<boolean> {
   try {
     const webhookUrl = process.env.DISCORD_WEBHOOK_URL
-
     if (!webhookUrl) {
-      console.error("DISCORD_WEBHOOK_URL is not defined in environment variables")
+      console.error("DISCORD_WEBHOOK_URL is not defined")
       return false
     }
 
-    // Retrieve user information
     let userInfo = { email: userId, name: "Unknown User" }
     try {
-      const userResult = await db
-        .select({ email: user.email, name: user.name })
-        .from(user)
-        .where(eq(user.id, userId))
-        .limit(1)
-
-      if (userResult.length > 0) {
-        userInfo = userResult[0]
+      const { data: authUser } = await getSupabaseAdmin().auth.admin.getUserById(userId)
+      if (authUser?.user) {
+        userInfo = {
+          email: authUser.user.email || userId,
+          name:
+            (authUser.user.user_metadata as Record<string, string>)?.full_name ||
+            authUser.user.email ||
+            "Unknown User",
+        }
       }
     } catch (error) {
-      console.error("Error retrieving user information:", error)
+      console.error("Error retrieving user info:", error)
     }
 
-    // Retrieve project information
     let projectInfo = { slug: projectId, name: "Unknown Project" }
     try {
-      const projectResult = await db
-        .select({ slug: project.slug, name: project.name })
-        .from(project)
-        .where(eq(project.id, projectId))
-        .limit(1)
-
-      if (projectResult.length > 0) {
-        projectInfo = projectResult[0]
-      }
+      const { data: project } = await getSupabaseAdmin()
+        .from("projects")
+        .select("slug, name")
+        .eq("id", projectId)
+        .single()
+      if (project) projectInfo = project
     } catch (error) {
-      console.error("Error retrieving project information:", error)
+      console.error("Error retrieving project info:", error)
     }
 
-    // Build project URL
     const projectUrl = `${process.env.NEXT_PUBLIC_URL || ""}/projects/${projectInfo.slug}`
-
-    // Truncate comment text if it's too long
     const truncatedText =
       commentText.length > 1500 ? commentText.substring(0, 1500) + "..." : commentText
 
-    // Create message to send to Discord
     const message: DiscordMessage = {
       embeds: [
         {
           title: "New Comment",
-          color: 0x00ff00, // Green for Open Launch
+          color: 0x00ff00,
           description: truncatedText,
           url: projectUrl,
           fields: [
-            {
-              name: "Project",
-              value: `[${projectInfo.name}](${projectUrl})`,
-              inline: true,
-            },
-            {
-              name: "User",
-              value: `${userInfo.name} (${userInfo.email})`,
-              inline: true,
-            },
+            { name: "Project", value: `[${projectInfo.name}](${projectUrl})`, inline: true },
+            { name: "User", value: `${userInfo.name} (${userInfo.email})`, inline: true },
           ],
-          footer: {
-            text: "Open Launch Comment Notification",
-          },
+          footer: { text: "Benchlist Comment Notification" },
           timestamp: new Date().toISOString(),
         },
       ],
     }
 
-    // Send request to Discord webhook
     const response = await fetch(webhookUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(message),
     })
 
-    if (!response.ok) {
-      console.error(`Error sending to Discord: ${response.status} ${response.statusText}`)
-      return false
-    }
-
-    return true
+    return response.ok
   } catch (error) {
     console.error("Error sending Discord notification:", error)
     return false
@@ -135,127 +125,73 @@ export async function sendDiscordCommentNotification(
 
 /**
  * Send a Discord notification for a scheduled launch
- * @param projectName Name of the project being launched
- * @param launchDate Date of the launch
- * @param launchType Type of launch (free, premium, premium plus)
- * @param websiteUrl URL of the project website
- * @param projectUrl URL of the project page on Benchlist
- * @param userId ID of the user who submitted the launch notification
  */
 export async function notifyDiscordLaunch(
   projectName: string,
   launchDate: string,
-  launchType: string,
+  launchTypeValue: string,
   websiteUrl: string,
   projectUrl: string,
   userId?: string,
 ): Promise<boolean> {
   try {
     const webhookUrl = process.env.DISCORD_LAUNCH_WEBHOOK_URL
-
     if (!webhookUrl) {
       console.error("Discord webhook URL is not defined")
       return false
     }
 
-    // Format the launch type for display
-    const formattedLaunchType = launchType
+    const formattedLaunchType = launchTypeValue
       .split("_")
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(" ")
 
-    // Determine color based on launch type, en utilisant les valeurs de l'enum
-    let color = 0x00ff00 // Vert par défaut pour Free (LaunchTypeEnum.FREE)
-    if (launchType === LaunchTypeEnum.PREMIUM) {
-      // comparaison directe avec la valeur de l'enum
-      color = 0xff9900 // Orange pour premium
-    } else if (launchType === LaunchTypeEnum.PREMIUM_PLUS) {
-      // comparaison directe
-      color = 0xff0000 // Rouge pour premium plus
-    }
+    let color = 0x00ff00
+    if (launchTypeValue === launchType.PREMIUM) color = 0xff9900
+    else if (launchTypeValue === launchType.PREMIUM_PLUS) color = 0xff0000
 
-    // Récupérer les informations de l'utilisateur si userId est fourni
     const submittedByFieldValue = await (async () => {
       if (!userId) return "N/A (User ID not provided)"
       try {
-        const userResult = await db
-          .select({ email: user.email, name: user.name })
-          .from(user)
-          .where(eq(user.id, userId))
-          .limit(1)
-
-        if (userResult.length > 0 && userResult[0].name && userResult[0].email) {
-          return `${userResult[0].name} (${userResult[0].email})`
-        } else {
-          console.warn(`[DiscordNotify] User info not found for ID: ${userId}`)
-          return `User ID: ${userId} (Info not fully available)`
+        const { data: authUser } = await getSupabaseAdmin().auth.admin.getUserById(userId)
+        if (authUser?.user) {
+          const name = (authUser.user.user_metadata as Record<string, string>)?.full_name
+          const email = authUser.user.email
+          if (name && email) return `${name} (${email})`
         }
-      } catch (error) {
-        console.error("[DiscordNotify] Error retrieving user info:", error)
+        return `User ID: ${userId} (Info not fully available)`
+      } catch {
         return `User ID: ${userId} (Error fetching info)`
       }
     })()
 
-    const submittedByField = {
-      name: "Submitted By",
-      value: submittedByFieldValue,
-      inline: true,
-    }
-
-    // Create message to send to Discord
     const message = {
       embeds: [
         {
           title: "New Project Launch Scheduled",
-          color: color,
+          color,
           url: projectUrl,
           description: `New project submitted: ${projectName}`,
           fields: [
-            {
-              name: "Project URL",
-              value: `[Visit Project](${projectUrl})`,
-              inline: true,
-            },
-            {
-              name: "Launch Date",
-              value: launchDate,
-              inline: true,
-            },
-            {
-              name: "Launch Type",
-              value: formattedLaunchType,
-              inline: true,
-            },
-            {
-              name: "Website URL",
-              value: `[Visit Website](${websiteUrl})`,
-              inline: true,
-            },
-            submittedByField,
+            { name: "Project URL", value: `[Visit Project](${projectUrl})`, inline: true },
+            { name: "Launch Date", value: launchDate, inline: true },
+            { name: "Launch Type", value: formattedLaunchType, inline: true },
+            { name: "Website URL", value: `[Visit Website](${websiteUrl})`, inline: true },
+            { name: "Submitted By", value: submittedByFieldValue, inline: true },
           ],
-          footer: {
-            text: "Open Launch Launch Notification",
-          },
+          footer: { text: "Benchlist Launch Notification" },
           timestamp: new Date().toISOString(),
         },
       ],
     }
 
-    // Send request to Discord webhook
     const response = await fetch(webhookUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(message),
     })
 
-    if (!response.ok) {
-      console.error(`Error sending to Discord: ${response.status} ${response.statusText}`)
-      return false
-    }
-
-    return true
+    return response.ok
   } catch (error) {
     console.error("Error sending Discord notification:", error)
     return false

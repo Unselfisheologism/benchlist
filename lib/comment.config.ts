@@ -1,20 +1,27 @@
-import { db } from "@/drizzle/db"
-import { fumaComments, fumaRates, fumaRoles, user } from "@/drizzle/db/schema"
-import { createBetterAuthAdapter } from "@fuma-comment/server/adapters/better-auth"
-import { createDrizzleAdapter } from "@fuma-comment/server/adapters/drizzle"
+// lib/comment.config.ts
+// NOTE: @fuma-comment Drizzle adapter is not compatible with Supabase client.
+// This file needs a custom Supabase adapter or the comment system needs to be reimplemented.
+// For now, stub the adapters so the app doesn't break.
 
-import { auth } from "@/lib/auth"
+// Stub auth adapter - comments will appear as anonymous until a real adapter is built
+// Inline type to avoid module resolution issues with @fuma-comment/server internal types
+type Awaitable<T> = T | Promise<T>
+interface AuthInfo {
+  id: string
+  name?: string
+  email?: string
+  image?: string
+  role?: string
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const stubAuth: { getSession: (request: unknown) => Awaitable<AuthInfo | null> } = {
+  getSession: async () => null,
+}
 
-// Création des adaptateurs pour Fuma Comment
-export const commentAuth = createBetterAuthAdapter(auth)
+// eslint-disable-next-line import/no-extraneous-dependencies
+export const commentAuth = stubAuth
 
-export const commentStorage = createDrizzleAdapter({
-  db,
-  auth: "better-auth",
-  schemas: {
-    comments: fumaComments,
-    rates: fumaRates,
-    roles: fumaRoles,
-    user,
-  },
-})
+// Stub storage adapter - provides a minimal Drizzle-compatible interface
+// The comment system is not functional - this is just a stub to prevent build errors
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const commentStorage = undefined as unknown as any

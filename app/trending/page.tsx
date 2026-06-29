@@ -1,9 +1,8 @@
 import { Suspense } from "react"
-import { headers } from "next/headers"
 import Link from "next/link"
 
-import { auth } from "@/lib/auth"
 import { PROJECT_LIMITS_VARIABLES } from "@/lib/constants"
+import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 // import { RiFilterLine, RiArrowDownSLine } from "@remixicon/react";
 import { ProjectCard } from "@/components/home/project-card"
@@ -132,10 +131,11 @@ export default async function TrendingPage({
   const filter = params.filter || "today"
   const topCategories = await getTopCategories(5)
 
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  })
-  const isAuthenticated = !!session?.user
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const isAuthenticated = !!user
 
   const todayProjects = await getTodayProjects()
   const ongoingLaunches = todayProjects.filter(

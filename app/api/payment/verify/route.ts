@@ -1,12 +1,21 @@
 import { NextResponse } from "next/server"
 
-import { db } from "@/drizzle/db"
-import { project } from "@/drizzle/db/schema"
-import { eq } from "drizzle-orm"
 import Stripe from "stripe"
 
-// Initialiser le client Stripe
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)
+import { createClient } from "@/lib/supabase/server"
+
+// Lazily initialized to avoid build-time errors when env vars are missing
+let stripe: Stripe | null = null
+
+function getStripe(): Stripe {
+  if (!stripe) {
+    if (!process.env.STRIPE_SECRET_KEY) {
+      throw new Error("STRIPE_SECRET_KEY environment variable is not set")
+    }
+    stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
+  }
+  return stripe
+}
 
 export async function GET(request: Request) {
   try {
@@ -19,7 +28,7 @@ export async function GET(request: Request) {
     }
 
     // Récupérer les détails de la session depuis Stripe
-    const session = await stripe.checkout.sessions.retrieve(sessionId)
+    const session = await getStripe().checkout.sessions.retrieve(sessionId)
 
     if (!session) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 })
@@ -34,15 +43,15 @@ export async function GET(request: Request) {
 
     // Vérifier le statut du paiement
     if (session.payment_status === "paid") {
+      const supabase = await createClient()
+
       // Récupérer les informations du projet
-      const [projectData] = await db
-        .select({
-          id: project.id,
-          slug: project.slug,
-          launchStatus: project.launchStatus,
-        })
-        .from(project)
-        .where(eq(project.id, projectId))
+      const { data: projectData } = await supabase
+        .from("projects")
+        .select("id, slug, launch_status")
+        .eq("id", projectId)
+        .limit(1)
+        .single()
 
       if (!projectData) {
         return NextResponse.json({ error: "Project not found" }, { status: 404 })
@@ -52,7 +61,7 @@ export async function GET(request: Request) {
         status: "complete",
         projectId: projectData.id,
         projectSlug: projectData.slug,
-        launchStatus: projectData.launchStatus,
+        launchStatus: projectData.launch_status,
       })
     } else if (session.payment_status === "unpaid") {
       return NextResponse.json({ status: "pending" })

@@ -2,34 +2,35 @@
 import { Metadata } from "next"
 import Link from "next/link"
 
-import { db } from "@/drizzle/db"
-import { seoArticle } from "@/drizzle/db/schema"
 import { Calendar, Clock } from "lucide-react"
 
+import { createClient } from "@/lib/supabase/server"
+
 export const metadata: Metadata = {
-  title: "Product Reviews | Open Launch - In-Depth Product Analysis",
+  title: "Product Reviews | Benchlist - In-Depth Product Analysis",
   description:
     "Discover comprehensive product reviews and in-depth analysis of the latest tools and platforms to help you make informed decisions.",
   keywords: "product reviews, analysis, evaluation, tools, platforms, technology",
-  authors: [{ name: "Open Launch Team" }],
+  authors: [{ name: "Benchlist Team" }],
   openGraph: {
-    title: "Product Reviews | Open Launch - In-Depth Product Analysis",
+    title: "Product Reviews | Benchlist - In-Depth Product Analysis",
     description:
       "Discover comprehensive product reviews and in-depth analysis of the latest tools and platforms to help you make informed decisions.",
     type: "website",
     url: "/reviews",
-    siteName: "Open Launch",
+    siteName: "Benchlist",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Product Reviews | Open Launch - In-Depth Product Analysis",
+    title: "Product Reviews | Benchlist - In-Depth Product Analysis",
     description:
       "Discover comprehensive product reviews and in-depth analysis of the latest tools and platforms to help you make informed decisions.",
   },
 }
 
-function formatDate(date: Date): string {
-  return date.toLocaleDateString("en-US", {
+function formatDate(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date
+  return d.toLocaleDateString("en-US", {
     year: "numeric",
     month: "long",
     day: "numeric",
@@ -44,7 +45,13 @@ function calculateReadingTime(content: string): string {
 }
 
 async function getReviews() {
-  const reviews = await db.select().from(seoArticle).orderBy(seoArticle.publishedAt)
+  const supabase = await createClient()
+  const { data: reviews } = await supabase
+    .from("seo_articles")
+    .select("*")
+    .order("published_at", { ascending: true })
+
+  if (!reviews) return []
 
   return reviews.map((review) => ({
     ...review,
@@ -129,8 +136,8 @@ export default async function ReviewsPage() {
                     <div className="text-muted-foreground mb-3 flex items-center gap-4 text-sm">
                       <div className="flex items-center gap-1">
                         <Calendar className="h-4 w-4" />
-                        <time dateTime={review.publishedAt.toISOString()}>
-                          {formatDate(review.publishedAt)}
+                        <time dateTime={new Date(review.published_at).toISOString()}>
+                          {formatDate(review.published_at)}
                         </time>
                       </div>
                       <div className="flex items-center gap-1">

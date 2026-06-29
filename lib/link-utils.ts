@@ -1,31 +1,36 @@
-import { LAUNCH_TYPES } from "@/lib/constants";
-import { launchStatus as launchStatusEnum, project as projectSchema } from "@/drizzle/db/schema";
+import { LAUNCH_TYPES } from "@/lib/constants"
 
-type ProjectSchemaSelect = typeof projectSchema.$inferSelect;
+const launchStatus = {
+  PAYMENT_PENDING: "payment_pending",
+  PAYMENT_FAILED: "payment_failed",
+  SCHEDULED: "scheduled",
+  ONGOING: "ongoing",
+  LAUNCHED: "launched",
+} as const
 
 interface ProjectLinkInfo {
-  launchType?: ProjectSchemaSelect['launchType'];
-  launchStatus?: ProjectSchemaSelect['launchStatus'];
-  dailyRanking?: ProjectSchemaSelect['dailyRanking'];
+  launchType?: string
+  launchStatus?: string
+  dailyRanking?: number | null
 }
 
 export function getProjectWebsiteRelAttribute(projectInfo: ProjectLinkInfo): string {
-  let rel = "noopener";
+  let rel = "noopener"
 
   const isPremiumTier =
     projectInfo.launchType === LAUNCH_TYPES.PREMIUM ||
-    projectInfo.launchType === LAUNCH_TYPES.PREMIUM_PLUS;
+    projectInfo.launchType === LAUNCH_TYPES.PREMIUM_PLUS
 
   const isTop3Daily =
-    projectInfo.launchStatus === launchStatusEnum.LAUNCHED &&
+    projectInfo.launchStatus === launchStatus.LAUNCHED &&
     projectInfo.dailyRanking !== null &&
-    typeof projectInfo.dailyRanking === 'number' &&
+    typeof projectInfo.dailyRanking === "number" &&
     projectInfo.dailyRanking >= 1 &&
-    projectInfo.dailyRanking <= 3;
+    projectInfo.dailyRanking <= 3
 
   if (!isPremiumTier && !isTop3Daily) {
-    rel += " nofollow";
+    rel += " nofollow"
   }
 
-  return rel;
-} 
+  return rel
+}

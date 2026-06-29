@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 
@@ -9,7 +9,7 @@ import { RiGithubFill, RiGoogleFill } from "@remixicon/react"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 
-import { oneTap, signIn, signUp } from "@/lib/auth-client"
+import { createClient } from "@/lib/supabase/client"
 import { SignUpFormData, signUpSchema } from "@/lib/validations/auth"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -40,9 +40,10 @@ export function SignUpForm() {
   const handleLogin = async (provider: string) => {
     setLoadingButtons((prevState) => ({ ...prevState, [provider]: true }))
     try {
-      await signIn.social({
+      const supabase = createClient()
+      await supabase.auth.signInWithOAuth({
         provider: provider as "google" | "github",
-        callbackURL: "/dashboard",
+        options: { redirectTo: `${window.location.origin}/auth/callback` },
       })
     } catch (error) {
       setGeneralError(error instanceof Error ? error.message : "An error occurred")
@@ -57,23 +58,22 @@ export function SignUpForm() {
       return
     }
 
-    const options = {
-      name: data.name,
-      email: data.email,
-      password: data.password,
-      callbackURL: "/verify-email/success",
-      fetchOptions: {
-        headers: {
-          "x-captcha-response": turnstileToken,
-        },
-      },
-    }
-
     try {
       setLoadingButtons((prevState) => ({ ...prevState, email: true }))
       setGeneralError(null)
 
-      await signUp.email(options)
+      const supabase = createClient()
+      const { error } = await supabase.auth.signUp({
+        email: data.email,
+        password: data.password,
+        options: { data: { full_name: data.name } },
+      })
+
+      if (error) {
+        setGeneralError(error.message)
+        return
+      }
+      toast.success("Check your email to verify your account")
       router.push("/verify-email/sent")
     } catch (error) {
       setGeneralError(error instanceof Error ? error.message : "An error occurred")
@@ -81,20 +81,6 @@ export function SignUpForm() {
       setLoadingButtons((prevState) => ({ ...prevState, email: false }))
     }
   }
-
-  useEffect(() => {
-    oneTap({
-      fetchOptions: {
-        onError: ({ error }) => {
-          toast.error(error.message || "An error occurred")
-        },
-        onSuccess: () => {
-          toast.success("Successfully signed in")
-          window.location.href = "/dashboard"
-        },
-      },
-    })
-  }, [])
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-4 px-4 sm:px-0">

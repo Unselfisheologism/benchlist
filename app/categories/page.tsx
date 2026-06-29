@@ -165,26 +165,43 @@ async function CategoryData({
         </div>
       ) : (
         <div className="-mx-3 flex flex-col sm:-mx-4">
-          {paginatedProjects.map((project, index) => (
-            <ProjectCard
-              key={project.id}
-              id={project.id}
-              slug={project.slug}
-              name={project.name}
-              description={project.description || ""}
-              logoUrl={project.logoUrl || ""}
-              websiteUrl={project.websiteUrl ?? undefined}
-              upvoteCount={project.upvoteCount ?? 0}
-              commentCount={project.commentCount ?? 0}
-              launchStatus={project.launchStatus}
-              launchType={project.launchType}
-              dailyRanking={project.dailyRanking}
-              index={index}
-              isAuthenticated={isAuthenticated}
-              userHasUpvoted={project.userHasUpvoted ?? false}
-              categories={project.categories ?? []}
-            />
-          ))}
+          {paginatedProjects.map((project, index) => {
+            const p = project as unknown as {
+              id: string
+              slug: string
+              name: string
+              description: string
+              logoUrl: string
+              websiteUrl?: string
+              upvoteCount: number
+              commentCount: number
+              launchStatus: string
+              launchType: string
+              dailyRanking: number
+              userHasUpvoted: boolean
+              categories: { id: string; name: string }[]
+            }
+            return (
+              <ProjectCard
+                key={p.id}
+                id={p.id}
+                slug={p.slug}
+                name={p.name}
+                description={p.description || ""}
+                logoUrl={p.logoUrl || ""}
+                websiteUrl={p.websiteUrl}
+                upvoteCount={p.upvoteCount}
+                commentCount={p.commentCount}
+                launchStatus={p.launchStatus}
+                launchType={p.launchType}
+                dailyRanking={p.dailyRanking}
+                index={index}
+                isAuthenticated={isAuthenticated}
+                userHasUpvoted={p.userHasUpvoted}
+                categories={p.categories}
+              />
+            )
+          })}
         </div>
       )}
 

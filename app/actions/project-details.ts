@@ -1,100 +1,121 @@
 "use server"
 
-import { revalidatePath } from "next/cache"
-import { headers } from "next/headers"
+import { createClient } from "@/lib/supabase/server"
 
-import { db } from "@/drizzle/db"
-import {
-  category,
-  launchStatus,
-  project,
-  projectToCategory,
-  upvote,
-  user,
-} from "@/drizzle/db/schema"
-import { and, eq, ne, sql } from "drizzle-orm"
+// Constantes pour les statuts de lancement
+const launchStatus = {
+  PAYMENT_PENDING: "payment_pending",
+  PAYMENT_FAILED: "payment_failed",
+  SCHEDULED: "scheduled",
+  ONGOING: "ongoing",
+  LAUNCHED: "launched",
+} as const
 
-import { auth } from "@/lib/auth"
-
-// Get session helper
-async function getSession() {
-  return auth.api.getSession({
-    headers: await headers(),
-  })
+interface ProjectBySlugResult {
+  id: string
+  slug: string
+  name: string
+  description: string | null
+  logo_url: string
+  website_url: string | null
+  launch_status: string
+  launch_type: string | null
+  scheduled_launch_date: string | null
+  created_at: string
+  categories: { id: string; name: string }[]
+  upvoteCount: number
+  creator: { id: string; name: string; email: string; image: string | null } | null
+  [key: string]: unknown
 }
 
 // Get project by slug
-export async function getProjectBySlug(slug: string) {
-  // Get project details - Exclure les projets avec le statut payment_pending
-  const [projectData] = await db
-    .select()
-    .from(project)
-    .where(and(eq(project.slug, slug), ne(project.launchStatus, launchStatus.PAYMENT_PENDING)))
+export async function getProjectBySlug(slug: string): Promise<ProjectBySlugResult | null> {
+  const supabase = await createClient()
+
+  const { data: projectData } = await supabase
+    .from("projects")
+    .select("*")
+    .eq("slug", slug)
+    .neq("launch_status", launchStatus.PAYMENT_PENDING)
     .limit(1)
+    .single()
 
   if (!projectData) {
     return null
   }
 
-  // Get creator information if available
   let creator = null
-  if (projectData.createdBy) {
-    const [creatorData] = await db
-      .select()
-      .from(user)
-      .where(eq(user.id, projectData.createdBy))
-      .limit(1)
-    creator = creatorData
+  if (projectData.created_by) {
+    const { createClient: createServiceClient } = await import("@supabase/supabase-js")
+    const supabaseAdmin = createServiceClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    )
+
+    const { data: creatorData } = await supabaseAdmin.auth.admin.getUserById(projectData.created_by)
+
+    if (creatorData?.user) {
+      creator = {
+        id: creatorData.user.id,
+        name: creatorData.user.user_metadata?.full_name || creatorData.user.email,
+        email: creatorData.user.email,
+        image: creatorData.user.user_metadata?.avatar_url,
+      }
+    }
   }
 
-  // Get categories
-  const categories = await db
-    .select({
-      id: category.id,
-      name: category.name,
-    })
-    .from(category)
-    .innerJoin(projectToCategory, eq(category.id, projectToCategory.categoryId))
-    .where(eq(projectToCategory.projectId, projectData.id))
+  const { data: rawCategories } = await supabase
+    .from("project_to_category")
+    .select("categories(id, name)")
+    .eq("project_id", projectData.id)
 
-  // Get upvote count
-  const [upvoteCount] = await db
-    .select({
-      count: sql`count(*)`,
-    })
-    .from(upvote)
-    .where(eq(upvote.projectId, projectData.id))
+  const categories = rawCategories as
+    | { categories: { id: string; name: string } | { id: string; name: string }[] }[]
+    | null
 
-  // Ne plus récupérer les commentaires ici car ils seront gérés par Fuma Comment
+  const formattedCategories = (categories || [])
+    .map((pc) => {
+      const cats = pc.categories
+      if (Array.isArray(cats)) return cats
+      return [{ id: cats.id, name: cats.name }]
+    })
+    .flat()
+
+  const { count: upvoteCount } = await supabase
+    .from("upvotes")
+    .select("id", { count: "exact", head: true })
+    .eq("project_id", projectData.id)
 
   return {
     ...projectData,
-    categories,
-    upvoteCount: Number(upvoteCount?.count || 0),
+    categories: formattedCategories,
+    upvoteCount: Number(upvoteCount || 0),
     creator,
-    // Ne plus inclure les commentaires dans l'objet retourné
   }
 }
 
 // Check if a user has upvoted a project
 export async function hasUserUpvoted(projectId: string) {
-  const session = await getSession()
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  if (!session?.user?.id) {
+  if (!user?.id) {
     return false
   }
 
-  const userUpvotes = await db
-    .select()
-    .from(upvote)
-    .where(and(eq(upvote.userId, session.user.id), eq(upvote.projectId, projectId)))
+  const { data: userUpvotes } = await supabase
+    .from("upvotes")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("project_id", projectId)
     .limit(1)
 
-  return userUpvotes.length > 0
+  return (userUpvotes && userUpvotes.length > 0) || false
 }
 
 // Update project description and categories
-// Only allowed for project owners and only if project is in "scheduled" status
 export async function updateProject(
   projectId: string,
   data: {
@@ -102,71 +123,120 @@ export async function updateProject(
     categories: string[]
   },
 ) {
-  const session = await getSession()
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  if (!session?.user?.id) {
+  if (!user?.id) {
     return { success: false, error: "Authentication required" }
   }
 
   try {
-    // Get project to check ownership and status
-    const [projectData] = await db.select().from(project).where(eq(project.id, projectId)).limit(1)
+    const { data: projectData } = await supabase
+      .from("projects")
+      .select("id, created_by, launch_status, slug")
+      .eq("id", projectId)
+      .limit(1)
+      .single()
 
     if (!projectData) {
       return { success: false, error: "Project not found" }
     }
 
-    // Check if user is the owner
-    if (projectData.createdBy !== session.user.id) {
+    if (projectData.created_by !== user.id) {
       return {
         success: false,
         error: "You don't have permission to edit this project",
       }
     }
 
-    // Check if project is in scheduled status
-    if (projectData.launchStatus !== "scheduled") {
+    if (projectData.launch_status !== "scheduled") {
       return {
         success: false,
-        error: "You can only edit projects that are scheduled for launch",
+        error: "You can only edit projects that are in scheduled status",
       }
     }
 
-    // Update description
-    await db
-      .update(project)
-      .set({
-        description: data.description,
-        updatedAt: new Date(),
-      })
-      .where(eq(project.id, projectId))
+    const { error: updateError } = await supabase
+      .from("projects")
+      .update({ description: data.description })
+      .eq("id", projectId)
 
-    // Update categories (remove old ones and add new ones)
-    // First, delete existing categories
-    await db.delete(projectToCategory).where(eq(projectToCategory.projectId, projectId))
+    if (updateError) {
+      return { success: false, error: updateError.message }
+    }
 
-    // Then add new categories
+    await supabase.from("project_to_category").delete().eq("project_id", projectId)
+
     if (data.categories.length > 0) {
-      await db.insert(projectToCategory).values(
-        data.categories.map((categoryId) => ({
-          projectId: projectId,
-          categoryId,
-        })),
-      )
+      const categoryInserts = data.categories.map((catId) => ({
+        project_id: projectId,
+        category_id: catId,
+      }))
+
+      const { error: catError } = await supabase.from("project_to_category").insert(categoryInserts)
+
+      if (catError) {
+        return { success: false, error: catError.message }
+      }
     }
 
-    // Revalidate the project page
-    revalidatePath(`/projects/${projectData.slug}`)
+    return { success: true }
+  } catch (err) {
+    console.error("Error updating project:", err)
+    return { success: false, error: "An unexpected error occurred" }
+  }
+}
 
-    return {
-      success: true,
-      message: "Project updated successfully",
+// Delete a project (only owner, only if not yet launched)
+export async function deleteProject(projectId: string) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user?.id) {
+    return { success: false, error: "Authentication required" }
+  }
+
+  try {
+    const { data: projectData } = await supabase
+      .from("projects")
+      .select("id, created_by, launch_status")
+      .eq("id", projectId)
+      .limit(1)
+      .single()
+
+    if (!projectData) {
+      return { success: false, error: "Project not found" }
     }
-  } catch (error) {
-    console.error("Error updating project:", error)
-    return {
-      success: false,
-      error: "Failed to update project",
+
+    if (projectData.created_by !== user.id) {
+      return {
+        success: false,
+        error: "You don't have permission to delete this project",
+      }
     }
+
+    if (projectData.launch_status === "ongoing" || projectData.launch_status === "launched") {
+      return {
+        success: false,
+        error: "You cannot delete a project that is already launched",
+      }
+    }
+
+    await supabase.from("project_to_category").delete().eq("project_id", projectId)
+
+    const { error: deleteError } = await supabase.from("projects").delete().eq("id", projectId)
+
+    if (deleteError) {
+      return { success: false, error: deleteError.message }
+    }
+
+    return { success: true }
+  } catch (err) {
+    console.error("Error deleting project:", err)
+    return { success: false, error: "An unexpected error occurred" }
   }
 }

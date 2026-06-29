@@ -8,7 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
 
-import { resetPassword } from "@/lib/auth-client"
+import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
@@ -35,7 +35,7 @@ type ResetPasswordFormData = z.infer<typeof resetPasswordSchema>
 export function ResetPasswordForm() {
   const [loading, setLoading] = useState(false)
   const [generalError, setGeneralError] = useState<string | null>(null)
-  const [token, setToken] = useState<string | null>(null)
+  const [ready, setReady] = useState(false)
   const router = useRouter()
 
   const {
@@ -47,31 +47,22 @@ export function ResetPasswordForm() {
   })
 
   useEffect(() => {
-    // Récupérer le token depuis l'URL
-    const searchParams = new URLSearchParams(window.location.search)
-    const tokenFromUrl = searchParams.get("token")
-    if (!tokenFromUrl) {
-      setGeneralError("Invalid or missing reset token")
-      return
-    }
-    setToken(tokenFromUrl)
+    // Supabase handles password reset via the auth callback URL
+    // The user arrives here after clicking the reset link which exchanges the token
+    setReady(true)
   }, [])
 
   const handleResetPassword = async (data: ResetPasswordFormData) => {
-    if (!token) {
-      setGeneralError("Invalid or missing reset token")
-      return
-    }
-
     setLoading(true)
     setGeneralError(null)
-
     try {
-      await resetPassword({
-        newPassword: data.password,
-        token,
-      })
-      router.push("/sign-in?message=Password reset successful. Please sign in.")
+      const supabase = createClient()
+      const { error } = await supabase.auth.updateUser({ password: data.password })
+      if (error) {
+        setGeneralError(error.message)
+      } else {
+        router.push("/sign-in?message=Password reset successful. Please sign in.")
+      }
     } catch {
       setGeneralError("Failed to reset password. Please try again.")
     }
@@ -113,7 +104,7 @@ export function ResetPasswordForm() {
               )}
             </div>
             {generalError && <p className="text-center text-sm text-red-500">{generalError}</p>}
-            <Button type="submit" className="w-full" disabled={loading || !token}>
+            <Button type="submit" className="w-full" disabled={loading || !ready}>
               {loading ? "Resetting password..." : "Reset password"}
             </Button>
             <div className="text-muted-foreground text-center text-sm">

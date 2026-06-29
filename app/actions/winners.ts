@@ -1,11 +1,19 @@
 "use server"
 
-import { db } from "@/drizzle/db"
-import { launchStatus, project as projectTable } from "@/drizzle/db/schema"
-import { and, eq, sql } from "drizzle-orm"
+import { createClient } from "@/lib/supabase/server"
+
+const launchStatus = {
+  PAYMENT_PENDING: "payment_pending",
+  PAYMENT_FAILED: "payment_failed",
+  SCHEDULED: "scheduled",
+  ONGOING: "ongoing",
+  LAUNCHED: "launched",
+} as const
 
 // Récupérer les projets gagnants pour une date spécifique
 export async function getWinnersByDate(date: Date) {
+  const supabase = await createClient()
+
   // Créer le début et la fin de la journée
   const dayStart = new Date(date)
   dayStart.setHours(0, 0, 0, 0)
@@ -13,32 +21,22 @@ export async function getWinnersByDate(date: Date) {
   const dayEnd = new Date(date)
   dayEnd.setHours(23, 59, 59, 999)
 
-  const winners = await db
-    .select({
-      id: projectTable.id,
-      name: projectTable.name,
-      slug: projectTable.slug,
-      logoUrl: projectTable.logoUrl,
-      description: projectTable.description,
-      dailyRanking: projectTable.dailyRanking,
-      scheduledLaunchDate: projectTable.scheduledLaunchDate,
-    })
-    .from(projectTable)
-    .where(
-      and(
-        eq(projectTable.launchStatus, launchStatus.LAUNCHED),
-        sql`${projectTable.dailyRanking} IS NOT NULL`,
-        sql`${projectTable.scheduledLaunchDate} >= ${dayStart.toISOString()}`,
-        sql`${projectTable.scheduledLaunchDate} <= ${dayEnd.toISOString()}`,
-      ),
-    )
-    .orderBy(projectTable.dailyRanking)
+  const { data: winners } = await supabase
+    .from("projects")
+    .select("id, name, slug, logo_url, description, daily_ranking, scheduled_launch_date")
+    .eq("launch_status", launchStatus.LAUNCHED)
+    .not("daily_ranking", "is", null)
+    .gte("scheduled_launch_date", dayStart.toISOString())
+    .lte("scheduled_launch_date", dayEnd.toISOString())
+    .order("daily_ranking", { ascending: true })
 
-  return winners
+  return winners ?? []
 }
 
 // Vérifier si une date a des gagnants
 export async function dateHasWinners(date: Date) {
+  const supabase = await createClient()
+
   // Créer le début et la fin de la journée
   const dayStart = new Date(date)
   dayStart.setHours(0, 0, 0, 0)
@@ -46,19 +44,13 @@ export async function dateHasWinners(date: Date) {
   const dayEnd = new Date(date)
   dayEnd.setHours(23, 59, 59, 999)
 
-  const result = await db
-    .select({
-      count: sql<number>`count(*)`.mapWith(Number),
-    })
-    .from(projectTable)
-    .where(
-      and(
-        eq(projectTable.launchStatus, launchStatus.LAUNCHED),
-        sql`${projectTable.dailyRanking} IS NOT NULL`,
-        sql`${projectTable.scheduledLaunchDate} >= ${dayStart.toISOString()}`,
-        sql`${projectTable.scheduledLaunchDate} <= ${dayEnd.toISOString()}`,
-      ),
-    )
+  const { count } = await supabase
+    .from("projects")
+    .select("id", { count: "exact", head: true })
+    .eq("launch_status", launchStatus.LAUNCHED)
+    .not("daily_ranking", "is", null)
+    .gte("scheduled_launch_date", dayStart.toISOString())
+    .lte("scheduled_launch_date", dayEnd.toISOString())
 
-  return result?.[0]?.count > 0
+  return (count ?? 0) > 0
 }

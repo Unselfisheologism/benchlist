@@ -2,11 +2,14 @@
 
 import Link from "next/link"
 
-import { launchStatus as launchStatusEnum } from "@/drizzle/db/schema"
 import { RiMessage2Line, RiThumbUpLine } from "@remixicon/react"
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { UpvoteButton } from "@/components/project/upvote-button"
+
+const launchStatus = {
+  ONGOING: "ongoing",
+} as const
 
 interface ProjectCardButtonsProps {
   projectPageUrl: string
@@ -26,10 +29,10 @@ export function ProjectCardButtons({
   upvoteCount,
   isAuthenticated,
   hasUpvoted,
-  launchStatus,
+  launchStatus: status,
   projectName,
 }: ProjectCardButtonsProps) {
-  const isActiveLaunch = launchStatus === launchStatusEnum.ONGOING
+  const isActiveLaunch = status === launchStatus.ONGOING
 
   return (
     <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-start">

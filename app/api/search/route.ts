@@ -2,12 +2,9 @@ import { unstable_cache } from "next/cache"
 import { headers } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
 
-import { db } from "@/drizzle/db"
-import { category, project } from "@/drizzle/db/schema"
-import { ilike, sql } from "drizzle-orm"
-
 import { API_RATE_LIMITS } from "@/lib/constants"
 import { checkRateLimit } from "@/lib/rate-limit"
+import { createClient } from "@/lib/supabase/server"
 
 // Définir le type de retour pour la recherche
 export interface SearchResult {
@@ -30,50 +27,38 @@ const getSearchResults = unstable_cache(
     }
 
     try {
+      const supabase = await createClient()
+
       // Rechercher dans les projets
-      const projects = await db
-        .select({
-          id: project.id,
-          name: project.name,
-          slug: project.slug,
-          description: project.description,
-          logoUrl: project.logoUrl,
-          type: sql<"project">`'project'`.as("type"),
-        })
-        .from(project)
-        .where(ilike(project.name, `%${query}%`))
+      const { data: projects } = await supabase
+        .from("projects")
+        .select("id, name, slug, description, logo_url")
+        .ilike("name", `%${query}%`)
         .limit(limit)
 
       // Rechercher dans les catégories
-      const categories = await db
-        .select({
-          id: category.id,
-          name: category.name,
-          slug: sql<string | null>`null`.as("slug"),
-          description: sql<string | null>`null`.as("description"),
-          logoUrl: sql<string | null>`null`.as("logoUrl"),
-          type: sql<"category">`'category'`.as("type"),
-        })
-        .from(category)
-        .where(ilike(category.name, `%${query}%`))
+      const { data: categories } = await supabase
+        .from("categories")
+        .select("id, name")
+        .ilike("name", `%${query}%`)
         .limit(limit)
 
       // Formater les résultats
-      const formattedProjects: SearchResult[] = projects.map((proj) => ({
+      const formattedProjects: SearchResult[] = (projects || []).map((proj) => ({
         id: proj.id,
         name: proj.name,
         slug: proj.slug,
         description: proj.description,
-        logoUrl: proj.logoUrl,
+        logoUrl: proj.logo_url,
         type: "project" as const,
       }))
 
-      const formattedCategories: SearchResult[] = categories.map((category) => ({
-        id: category.id,
-        name: category.name,
-        slug: category.slug,
-        description: category.description,
-        logoUrl: category.logoUrl,
+      const formattedCategories: SearchResult[] = (categories || []).map((cat) => ({
+        id: cat.id,
+        name: cat.name,
+        slug: null,
+        description: null,
+        logoUrl: null,
         type: "category" as const,
       }))
 

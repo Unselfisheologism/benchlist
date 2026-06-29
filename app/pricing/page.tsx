@@ -1,13 +1,11 @@
 /* eslint-disable @next/next/no-img-element */
 import Link from "next/link"
 
-import { db } from "@/drizzle/db"
-import { seoArticle } from "@/drizzle/db/schema"
 import { RiArticleLine, RiCheckboxCircleFill, RiInformationLine, RiLinkM } from "@remixicon/react"
-import { desc } from "drizzle-orm"
 import { Calendar, Clock } from "lucide-react"
 
 import { LAUNCH_LIMITS, LAUNCH_SETTINGS } from "@/lib/constants"
+import { createClient } from "@/lib/supabase/server"
 import {
   Accordion,
   AccordionContent,
@@ -80,11 +78,18 @@ function calculateReadingTime(content: string): string {
 }
 
 async function getLatestReviews() {
-  const reviews = await db.select().from(seoArticle).orderBy(desc(seoArticle.publishedAt)).limit(5)
+  const supabase = await createClient()
+  const { data: reviews } = await supabase
+    .from("seo_articles")
+    .select("*")
+    .order("published_at", { ascending: false })
+    .limit(5)
 
-  return reviews.map((review) => ({
+  return (reviews || []).map((review) => ({
     ...review,
-    readingTime: calculateReadingTime(review.content),
+    // Supabase returns published_at as ISO string
+    publishedAt: new Date(review.published_at),
+    readingTime: calculateReadingTime(review.content || ""),
   }))
 }
 
@@ -94,8 +99,11 @@ export default async function PricingPage() {
     <div className="container mx-auto max-w-3xl px-4 py-8 md:py-12">
       {/* Domain Rating Badge */}
       <div className="mb-4 flex justify-center">
-        <a href="https://frogdr.com/open-launch.com?utm_source=open-launch.com" target="_blank">
-          {/* Light mode badge */}
+        <a
+          href="https://frogdr.com/open-launch.com?utm_source=open-launch.com"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           <img
             src="https://frogdr.com/open-launch.com/badge-white-sm.svg?round=1"
             alt="Monitor your Domain Rating with FrogDR"
@@ -103,7 +111,6 @@ export default async function PricingPage() {
             height="36"
             className="h-8 w-auto dark:hidden"
           />
-          {/* Dark mode badge */}
           <img
             src="https://frogdr.com/open-launch.com/badge-dark-sm.svg?round=1"
             alt="Monitor your Domain Rating with FrogDR"
@@ -256,7 +263,6 @@ export default async function PricingPage() {
                     </DialogHeader>
 
                     <div className="space-y-6">
-                      {/* Price */}
                       <div className="text-center">
                         <div className="text-3xl font-bold">
                           ${LAUNCH_SETTINGS.ARTICLE_PRICE}
@@ -266,7 +272,6 @@ export default async function PricingPage() {
                         </div>
                       </div>
 
-                      {/* What's included */}
                       <div>
                         <h3 className="mb-4 font-medium">What you get:</h3>
                         <div className="space-y-3">
@@ -295,7 +300,6 @@ export default async function PricingPage() {
                         </div>
                       </div>
 
-                      {/* Process */}
                       <div>
                         <h3 className="mb-4 font-medium">What happens next:</h3>
                         <div className="space-y-3">
@@ -331,7 +335,6 @@ export default async function PricingPage() {
                         </div>
                       </div>
 
-                      {/* Requirement */}
                       <div className="bg-muted/30 rounded p-3">
                         <div className="flex gap-2">
                           <RiInformationLine className="text-muted-foreground mt-0.5 h-4 w-4 flex-shrink-0" />
@@ -342,9 +345,12 @@ export default async function PricingPage() {
                         </div>
                       </div>
 
-                      {/* Button */}
                       <Button className="h-11 w-full" asChild>
-                        <Link href={process.env.NEXT_PUBLIC_SEO_ARTICLE_LINK!} target="_blank">
+                        <Link
+                          href={process.env.NEXT_PUBLIC_SEO_ARTICLE_LINK!}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
                           Get SEO Package - ${LAUNCH_SETTINGS.ARTICLE_PRICE}
                         </Link>
                       </Button>
@@ -395,7 +401,6 @@ export default async function PricingPage() {
                     </div>
                   </div>
                 </div>
-
                 <div className="bg-primary/5 border-primary/20 rounded border p-2">
                   <div className="flex items-start gap-2">
                     <RiCheckboxCircleFill className="text-primary mt-0.5 h-4 w-4" />
@@ -433,7 +438,6 @@ export default async function PricingPage() {
                         href={`/reviews/${review.slug}`}
                         className="bg-card hover:border-muted-foreground/20 block overflow-hidden rounded-2xl border"
                       >
-                        {/* Review Image */}
                         <div className="bg-muted relative aspect-[16/9] overflow-hidden">
                           {review.image ? (
                             <img
@@ -450,9 +454,7 @@ export default async function PricingPage() {
                           )}
                         </div>
 
-                        {/* Review Content */}
                         <div className="px-6 py-4">
-                          {/* Meta Information */}
                           <div className="text-muted-foreground mb-3 flex items-center gap-4 text-sm">
                             <div className="flex items-center gap-1">
                               <Calendar className="h-4 w-4" />
@@ -466,19 +468,16 @@ export default async function PricingPage() {
                             </div>
                           </div>
 
-                          {/* Review Badge */}
                           <div className="mb-4">
                             <span className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-xs">
                               Product Review
                             </span>
                           </div>
 
-                          {/* Title */}
                           <h2 className="text-card-foreground group-hover:text-primary mb-2 line-clamp-3 text-xl font-bold transition-colors">
                             {review.title}
                           </h2>
 
-                          {/* Description */}
                           <p className="text-muted-foreground line-clamp-3 text-sm">
                             {review.description}
                           </p>
@@ -498,29 +497,20 @@ export default async function PricingPage() {
               href="/reviews"
               className="text-primary hover:text-primary/80 text-sm font-medium transition-colors"
             >
-              View all reviews →
+              View all reviews
             </Link>
           </div>
         </div>
       )}
 
-      <div className="mx-auto mb-12 max-w-3xl">
-        <h2 className="mb-4 text-center text-xl font-bold sm:text-2xl">
-          Frequently Asked Questions
-        </h2>
-        <Accordion type="single" collapsible className="w-full -space-y-px" defaultValue="1">
+      {/* FAQ Section */}
+      <div className="mx-auto mb-12 max-w-2xl">
+        <h2 className="mb-6 text-center text-xl font-bold">Frequently Asked Questions</h2>
+        <Accordion type="single" collapsible className="w-full">
           {faqItems.map((item) => (
-            <AccordionItem
-              value={item.id}
-              key={item.id}
-              className="bg-background has-focus-visible:border-ring has-focus-visible:ring-ring/50 relative border px-4 py-1 outline-none first:rounded-t-md last:rounded-b-md last:border-b has-focus-visible:z-10 has-focus-visible:ring-[3px]"
-            >
-              <AccordionTrigger className="py-2 text-[15px] leading-6 hover:no-underline focus-visible:ring-0">
-                {item.title}
-              </AccordionTrigger>
-              <AccordionContent className="text-muted-foreground pb-2">
-                {item.content}
-              </AccordionContent>
+            <AccordionItem key={item.id} value={item.id}>
+              <AccordionTrigger>{item.title}</AccordionTrigger>
+              <AccordionContent>{item.content}</AccordionContent>
             </AccordionItem>
           ))}
         </Accordion>

@@ -9,10 +9,9 @@ import {
   RiSettings4Line,
   RiShieldUserLine,
 } from "@remixicon/react"
-import { User } from "better-auth"
 import { ChevronDownIcon } from "lucide-react"
 
-import { signOut } from "@/lib/auth-client"
+import { createClient } from "@/lib/supabase/client"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -25,21 +24,18 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 interface UserNavProps {
-  user: User & { role?: string }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  user: Record<string, any>
 }
 
 export function UserNav({ user }: UserNavProps) {
   const router = useRouter()
 
-  const handleSignOut = () => {
-    signOut({
-      fetchOptions: {
-        onSuccess: () => {
-          router.push("/")
-          router.refresh()
-        },
-      },
-    })
+  const handleSignOut = async () => {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    router.push("/")
+    router.refresh()
   }
 
   return (
@@ -51,15 +47,17 @@ export function UserNav({ user }: UserNavProps) {
           className="h-8 cursor-pointer px-2 hover:bg-transparent hover:text-black focus-visible:ring-0 focus-visible:ring-offset-0 dark:hover:text-white"
         >
           <Avatar className="h-6 w-6">
-            {user.image ? (
+            {user?.user_metadata?.avatar_url ? (
               <AvatarImage
-                src={user.image}
-                alt={user.name || "User avatar"}
+                src={user.user_metadata.avatar_url}
+                alt={user?.user_metadata?.full_name || "User avatar"}
                 loading="eager"
                 fetchPriority="high"
               />
             ) : (
-              <AvatarFallback className="">{user.name?.charAt(0).toUpperCase()}</AvatarFallback>
+              <AvatarFallback className="">
+                {(user?.user_metadata?.full_name || user?.email || "U").charAt(0).toUpperCase()}
+              </AvatarFallback>
             )}
           </Avatar>
           <ChevronDownIcon size={14} className="hidden opacity-60 md:block" aria-hidden="true" />
@@ -68,8 +66,10 @@ export function UserNav({ user }: UserNavProps) {
       <DropdownMenuContent className="w-56 overflow-y-auto" align="end" forceMount>
         <DropdownMenuLabel className="font-normal">
           <div className="flex flex-col space-y-1">
-            <p className="text-sm leading-none font-medium">{user.name}</p>
-            <p className="text-muted-foreground text-xs leading-none">{user.email}</p>
+            <p className="text-sm leading-none font-medium">
+              {user?.user_metadata?.full_name || user?.email}
+            </p>
+            <p className="text-muted-foreground text-xs leading-none">{user?.email}</p>
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
@@ -81,7 +81,7 @@ export function UserNav({ user }: UserNavProps) {
         </DropdownMenuItem>
 
         {/* Lien vers le dashboard admin, visible uniquement pour les administrateurs */}
-        {user.role === "admin" && (
+        {user?.user_metadata?.role === "admin" && (
           <DropdownMenuItem asChild>
             <Link href="/admin" className="flex cursor-pointer items-center">
               <RiShieldUserLine className="focus:text-primary mr-2 h-4 w-4" />

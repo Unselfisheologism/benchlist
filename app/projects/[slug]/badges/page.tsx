@@ -1,11 +1,10 @@
 import { Metadata } from "next"
-import { headers } from "next/headers"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
 import { RiArrowLeftLine } from "@remixicon/react"
 
-import { auth } from "@/lib/auth"
+import { createClient } from "@/lib/supabase/server"
 import { getProjectBySlug } from "@/app/actions/project-details"
 
 import { BadgesDisplay } from "../../../../components/badges/BadgesDisplay"
@@ -40,13 +39,15 @@ export default async function BadgesPage({ params }: BadgesPageProps) {
     notFound()
   }
 
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  })
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  const isOwner = session?.user?.id === projectData.createdBy
+  const isOwner = user?.id === projectData.created_by
+  const dailyRanking = (projectData.daily_ranking as number | null | undefined) ?? null
 
-  if (!isOwner || !projectData.dailyRanking || projectData.dailyRanking > 3) {
+  if (!isOwner || !dailyRanking || dailyRanking > 3) {
     notFound()
   }
 
@@ -69,11 +70,11 @@ export default async function BadgesPage({ params }: BadgesPageProps) {
           </div>
 
           <p className="text-muted-foreground text-sm sm:text-base">
-            Congratulations on making it to the top {projectData.dailyRanking}! Display this badge
-            on your website to showcase your achievement.
+            Congratulations on making it to the top {dailyRanking}! Display this badge on your
+            website to showcase your achievement.
           </p>
 
-          <BadgesDisplay dailyRanking={projectData.dailyRanking} slug={projectData.slug} />
+          <BadgesDisplay dailyRanking={dailyRanking} slug={projectData.slug} />
         </div>
       </div>
     </div>

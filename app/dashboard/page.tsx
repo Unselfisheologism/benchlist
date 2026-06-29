@@ -1,4 +1,3 @@
-import { headers } from "next/headers"
 import Image from "next/image"
 import Link from "next/link"
 
@@ -11,7 +10,7 @@ import {
   RiThumbUpLine,
 } from "@remixicon/react"
 
-import { auth } from "@/lib/auth"
+import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -43,12 +42,13 @@ interface BaseProject {
 }
 
 export default async function Dashboard() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  })
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
   // If user is not logged in, we shouldn't be here
-  if (!session?.user?.id) {
+  if (!user?.id) {
     return null
   }
 
@@ -57,7 +57,7 @@ export default async function Dashboard() {
   const createdProjectsData = await getUserCreatedProjects()
 
   // Process the data to match our expected formats
-  const upvotedProjects = upvotedProjectsData.map((item) => item.project) as BaseProject[]
+  const upvotedProjects = upvotedProjectsData.map((item) => item.project as unknown as BaseProject)
   const createdProjects = createdProjectsData as BaseProject[]
 
   // projects with badge (launched + top 3)
@@ -72,6 +72,9 @@ export default async function Dashboard() {
 
   const previousLaunches = createdProjects.filter((project) => project.launchStatus === "launched")
 
+  const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User"
+  const displayImage = user?.user_metadata?.avatar_url || user?.user_metadata?.picture
+
   return (
     <div className="min-h-[calc(100vh-64px)] py-6 sm:py-8">
       <div className="mx-auto max-w-6xl px-4">
@@ -80,7 +83,7 @@ export default async function Dashboard() {
           <div className="mb-6 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
             <div>
               <h1 className="font-heading text-2xl font-bold sm:text-3xl">Dashboard</h1>
-              <p className="text-muted-foreground">Welcome, {session?.user?.name || "User"}</p>
+              <p className="text-muted-foreground">Welcome, {displayName}</p>
             </div>
             <div className="flex gap-2">
               <Button variant="secondary" asChild>
@@ -281,23 +284,23 @@ export default async function Dashboard() {
               <CardContent className="pb-3">
                 <div className="flex items-center gap-4">
                   <div className="h-16 w-16 overflow-hidden rounded-full border">
-                    {session?.user?.image ? (
+                    {displayImage ? (
                       <Image
-                        src={session?.user?.image}
-                        alt={session?.user?.name || "User"}
+                        src={displayImage}
+                        alt={displayName}
                         width={64}
                         height={64}
                         className="h-full w-full object-cover"
                       />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center object-cover text-2xl font-bold">
-                        {session?.user?.name?.charAt(0).toUpperCase()}
+                        {displayName?.charAt(0).toUpperCase()}
                       </div>
                     )}
                   </div>
                   <div>
-                    <h4 className="text-lg font-medium">{session?.user?.name}</h4>
-                    <p className="text-muted-foreground text-sm">{session?.user?.email}</p>
+                    <h4 className="text-lg font-medium">{displayName}</h4>
+                    <p className="text-muted-foreground text-sm">{user?.email}</p>
                   </div>
                 </div>
               </CardContent>

@@ -3,8 +3,6 @@ import { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
-import { db } from "@/drizzle/db"
-import { blogArticle } from "@/drizzle/db/schema"
 import {
   RiArticleLine,
   RiInformationLine,
@@ -13,12 +11,12 @@ import {
   RiTrophyLine,
   RiUserStarLine,
 } from "@remixicon/react"
-import { eq } from "drizzle-orm"
 import { ArrowLeft, Calendar, Clock } from "lucide-react"
 import { MDXRemote } from "next-mdx-remote/rsc"
 import remarkGfm from "remark-gfm"
 
 import { DOMAIN_AUTHORITY, LAUNCH_SETTINGS } from "@/lib/constants"
+import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -37,37 +35,50 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params
 
-  const article = await db.select().from(blogArticle).where(eq(blogArticle.slug, slug)).limit(1)
+  const supabase = await createClient()
+  const { data: article } = await supabase
+    .from("blog_articles")
+    .select("*")
+    .eq("slug", slug)
+    .limit(1)
+    .single()
 
-  if (!article[0]) {
+  if (!article) {
     return {
-      title: "Article not found | Open Launch",
+      title: "Article not found | Benchlist",
       description: "The article you're looking for doesn't exist or has been removed.",
     }
   }
 
-  const { title, description, metaTitle, metaDescription } = article[0]
+  const { title, description, meta_title, meta_description } = article as unknown as Record<
+    string,
+    string
+  >
 
   return {
-    title: metaTitle || `${title} | Open Launch`,
-    description: metaDescription || description,
+    title: meta_title || `${title} | Benchlist`,
+    description: meta_description || description,
     keywords: "blog, insights, tutorials, product launch, entrepreneurship, technology, startup",
-    authors: [{ name: article[0].author || "Open Launch Team" }],
+    authors: [
+      { name: String((article as unknown as Record<string, unknown>).author || "Benchlist Team") },
+    ],
     category: "Technology",
     openGraph: {
-      title: metaTitle || `${title} | Open Launch`,
-      description: metaDescription || description,
-      type: "article",
-      publishedTime: article[0].publishedAt.toISOString(),
-      siteName: "Open Launch",
+      title: meta_title || `${title} | Benchlist`,
+      description: meta_description || description,
+      type: "article" as const,
+      publishedTime: new Date(
+        (article as { published_at?: string }).published_at ?? "",
+      ).toISOString(),
+      siteName: "Benchlist",
       locale: "en_US",
     },
     twitter: {
       card: "summary_large_image",
-      title: metaTitle || `${title} | Open Launch`,
-      description: metaDescription || description,
-      creator: "@openlaunch",
-      site: "@openlaunch",
+      title: meta_title || `${title} | Benchlist`,
+      description: meta_description || description,
+      creator: "@benchlist",
+      site: "@benchlist",
     },
     alternates: {
       canonical: `/blog/${slug}`,
@@ -75,8 +86,9 @@ export async function generateMetadata({
   }
 }
 
-function formatDate(date: Date): string {
-  return date.toLocaleDateString("en-US", {
+function formatDate(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date
+  return d.toLocaleDateString("en-US", {
     year: "numeric",
     month: "long",
     day: "numeric",
@@ -93,14 +105,27 @@ function calculateReadingTime(content: string): string {
 export default async function BlogArticlePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
 
-  const article = await db.select().from(blogArticle).where(eq(blogArticle.slug, slug)).limit(1)
+  const supabase = await createClient()
+  const { data: article } = await supabase
+    .from("blog_articles")
+    .select("*")
+    .eq("slug", slug)
+    .limit(1)
+    .single()
 
-  if (!article[0]) {
+  if (!article) {
     notFound()
   }
 
-  const { title, description, content, publishedAt, tags } = article[0]
+  const { title, description, content, published_at, tags } = article as unknown as {
+    title: string
+    description: string
+    content: string
+    published_at: string
+    tags?: string[]
+  }
   const readingTime = calculateReadingTime(content)
+  const publishedDate = new Date(published_at)
 
   return (
     <div className="bg-background min-h-screen">
@@ -126,7 +151,7 @@ export default async function BlogArticlePage({ params }: { params: Promise<{ sl
                 <div className="text-muted-foreground mb-4 flex flex-wrap items-center gap-4 text-sm">
                   <div className="flex items-center gap-1">
                     <Calendar className="h-4 w-4" />
-                    <time dateTime={publishedAt.toISOString()}>{formatDate(publishedAt)}</time>
+                    <time dateTime={publishedDate.toISOString()}>{formatDate(publishedDate)}</time>
                   </div>
                   <div className="flex items-center gap-1">
                     <Clock className="h-4 w-4" />
@@ -155,10 +180,10 @@ export default async function BlogArticlePage({ params }: { params: Promise<{ sl
                 )}
 
                 {/* Hero Image */}
-                {article[0].image && (
+                {(article as unknown as Record<string, string>).image && (
                   <div className="bg-muted mb-8 aspect-[16/9] overflow-hidden rounded-lg">
                     <img
-                      src={article[0].image}
+                      src={(article as unknown as Record<string, string>).image}
                       alt={title}
                       className="h-full w-full object-cover"
                     />

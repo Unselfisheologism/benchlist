@@ -1,69 +1,115 @@
 "use server"
 
-import { headers } from "next/headers"
-
-import { db } from "@/drizzle/db"
-import {
-  category as categoryTable,
-  fumaComments,
-  launchStatus,
-  launchType,
-  project as projectTable,
-  projectToCategory,
-  upvote,
-} from "@/drizzle/db/schema"
 import { endOfMonth, startOfMonth } from "date-fns"
-import { and, desc, eq, sql } from "drizzle-orm"
 
-import { auth } from "@/lib/auth"
 import { PROJECT_LIMITS_VARIABLES } from "@/lib/constants"
+import { createClient } from "@/lib/supabase/server"
+
+const launchStatus = {
+  PAYMENT_PENDING: "payment_pending",
+  PAYMENT_FAILED: "payment_failed",
+  SCHEDULED: "scheduled",
+  ONGOING: "ongoing",
+  LAUNCHED: "launched",
+} as const
+
+const launchType = {
+  FREE: "free",
+  PREMIUM: "premium",
+  PREMIUM_PLUS: "premium_plus",
+} as const
 
 async function getCurrentUserId() {
-  const session = await auth.api.getSession({ headers: await headers() })
-  return session?.user?.id ?? null
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  return user?.id ?? null
+}
+
+// Maps a project row from Supabase (snake_case) to camelCase for UI consumption
+function mapProject<
+  T extends {
+    id: string
+    slug: string
+    name: string
+    logo_url: string
+    website_url?: string | null
+    launch_status: string
+    launch_type?: string | null
+    daily_ranking?: number | null
+    scheduled_launch_date?: string | null
+    created_at: string
+    description?: string | null
+  },
+>(p: T) {
+  return {
+    ...p,
+    logoUrl: p.logo_url,
+    websiteUrl: p.website_url,
+    launchStatus: p.launch_status,
+    launchType: p.launch_type,
+    dailyRanking: p.daily_ranking,
+    scheduledLaunchDate: p.scheduled_launch_date,
+    createdAt: p.created_at,
+  } as T & {
+    logoUrl: string
+    websiteUrl?: string | null
+    launchStatus: string
+    launchType?: string | null
+    dailyRanking?: number | null
+    scheduledLaunchDate?: string | null
+    createdAt: string
+  }
 }
 
 async function enrichProjectsWithUserData<T extends { id: string }>(
   projects: T[],
   userId: string | null,
-): Promise<
-  (T & {
-    userHasUpvoted: boolean
-    categories: { id: string; name: string }[]
-  })[]
-> {
-  if (!projects.length) return []
+) {
+  if (!projects.length)
+    return projects as (T & {
+      userHasUpvoted: boolean
+      categories: { id: string; name: string }[]
+    })[]
 
   const projectIds = projects.map((p) => p.id)
+  const supabase = await createClient()
 
-  const categoriesData = await db
-    .select({
-      projectId: projectToCategory.projectId,
-      categoryId: categoryTable.id,
-      categoryName: categoryTable.name,
-    })
-    .from(projectToCategory)
-    .innerJoin(categoryTable, eq(categoryTable.id, projectToCategory.categoryId))
-    .where(sql`${projectToCategory.projectId} IN ${projectIds}`)
+  const { data: projectCategories } = await supabase
+    .from("project_to_category")
+    .select("project_id, category_id, categories(id, name)")
+    .in("project_id", projectIds)
 
-  const categoriesByProjectId = categoriesData.reduce(
-    (acc, row) => {
-      if (!acc[row.projectId]) {
-        acc[row.projectId] = []
+  const categoriesByProjectId: Record<string, { id: string; name: string }[]> = {}
+  for (const row of projectCategories || []) {
+    if (!categoriesByProjectId[row.project_id]) {
+      categoriesByProjectId[row.project_id] = []
+    }
+    const cats = row.categories as
+      | { id: string; name: string }
+      | { id: string; name: string }[]
+      | null
+    if (cats) {
+      if (Array.isArray(cats)) {
+        categoriesByProjectId[row.project_id].push(...cats)
+      } else {
+        categoriesByProjectId[row.project_id].push(cats)
       }
-      acc[row.projectId].push({ id: row.categoryId, name: row.categoryName })
-      return acc
-    },
-    {} as Record<string, { id: string; name: string }[]>,
-  )
+    }
+  }
 
   let userUpvotedProjectIds = new Set<string>()
   if (userId) {
-    const userUpvotes = await db
-      .select({ projectId: upvote.projectId })
-      .from(upvote)
-      .where(and(eq(upvote.userId, userId), sql`${upvote.projectId} IN ${projectIds}`))
-    userUpvotedProjectIds = new Set(userUpvotes.map((uv) => uv.projectId))
+    const { data: userUpvotes } = await supabase
+      .from("upvotes")
+      .select("project_id")
+      .eq("user_id", userId)
+      .in("project_id", projectIds)
+
+    userUpvotedProjectIds = new Set(
+      (userUpvotes || []).map((uv: { project_id: string }) => uv.project_id),
+    )
   }
 
   return projects.map((project) => ({
@@ -75,31 +121,35 @@ async function enrichProjectsWithUserData<T extends { id: string }>(
 
 export async function getTodayProjects(limit: number = PROJECT_LIMITS_VARIABLES.TODAY_LIMIT) {
   const userId = await getCurrentUserId()
-  const todayProjectsBase = await db
-    .select({
-      id: projectTable.id,
-      name: projectTable.name,
-      slug: projectTable.slug,
-      description: projectTable.description,
-      logoUrl: projectTable.logoUrl,
-      websiteUrl: projectTable.websiteUrl,
-      launchStatus: projectTable.launchStatus,
-      launchType: projectTable.launchType,
-      dailyRanking: projectTable.dailyRanking,
-      scheduledLaunchDate: projectTable.scheduledLaunchDate,
-      createdAt: projectTable.createdAt,
-      upvoteCount: sql<number>`cast(count(distinct ${upvote.id}) as int)`.mapWith(Number),
-      commentCount: sql<number>`cast(count(distinct ${fumaComments.id}) as int)`.mapWith(Number),
-    })
-    .from(projectTable)
-    .leftJoin(upvote, eq(upvote.projectId, projectTable.id))
-    .leftJoin(fumaComments, sql`"fuma_comments"."page"::text = ${projectTable.id}`)
-    .where(eq(projectTable.launchStatus, launchStatus.ONGOING))
-    .groupBy(projectTable.id)
-    .orderBy(desc(sql`count(distinct ${upvote.id})`))
-    .limit(limit)
+  const supabase = await createClient()
 
-  return enrichProjectsWithUserData(todayProjectsBase, userId)
+  const { data: todayProjects } = await supabase
+    .from("projects")
+    .select(
+      "id, name, slug, description, logo_url, website_url, launch_status, launch_type, daily_ranking, scheduled_launch_date, created_at",
+    )
+    .eq("launch_status", launchStatus.ONGOING)
+    .order("created_at", { ascending: false })
+
+  if (!todayProjects) return []
+
+  const projectIds = todayProjects.map((p) => p.id)
+  const { data: upvotes } = await supabase
+    .from("upvotes")
+    .select("project_id")
+    .in("project_id", projectIds)
+
+  const upvoteCounts: Record<string, number> = {}
+  for (const uv of upvotes || []) {
+    upvoteCounts[uv.project_id] = (upvoteCounts[uv.project_id] || 0) + 1
+  }
+
+  const sortedProjects = todayProjects
+    .map((p) => mapProject({ ...p, upvoteCount: upvoteCounts[p.id] || 0 }))
+    .sort((a, b) => b.upvoteCount - a.upvoteCount)
+    .slice(0, limit)
+
+  return enrichProjectsWithUserData(sortedProjects, userId)
 }
 
 export async function getYesterdayProjects(
@@ -118,37 +168,36 @@ export async function getYesterdayProjects(
   const yesterdayEnd = new Date(yesterdayStart)
   yesterdayEnd.setDate(yesterdayEnd.getDate() + 1)
 
-  const yesterdayProjectsBase = await db
-    .select({
-      id: projectTable.id,
-      name: projectTable.name,
-      slug: projectTable.slug,
-      description: projectTable.description,
-      logoUrl: projectTable.logoUrl,
-      websiteUrl: projectTable.websiteUrl,
-      launchStatus: projectTable.launchStatus,
-      launchType: projectTable.launchType,
-      scheduledLaunchDate: projectTable.scheduledLaunchDate,
-      createdAt: projectTable.createdAt,
-      upvoteCount: sql<number>`cast(count(distinct ${upvote.id}) as int)`.mapWith(Number),
-      commentCount: sql<number>`cast(count(distinct ${fumaComments.id}) as int)`.mapWith(Number),
-      dailyRanking: projectTable.dailyRanking,
-    })
-    .from(projectTable)
-    .leftJoin(upvote, eq(upvote.projectId, projectTable.id))
-    .leftJoin(fumaComments, sql`"fuma_comments"."page"::text = ${projectTable.id}`)
-    .where(
-      and(
-        eq(projectTable.launchStatus, launchStatus.LAUNCHED),
-        sql`${projectTable.scheduledLaunchDate} >= ${yesterdayStart.toISOString()}`,
-        sql`${projectTable.scheduledLaunchDate} < ${yesterdayEnd.toISOString()}`,
-      ),
-    )
-    .groupBy(projectTable.id)
-    .orderBy(desc(sql`count(distinct ${upvote.id})`))
-    .limit(limit)
+  const supabase = await createClient()
 
-  return enrichProjectsWithUserData(yesterdayProjectsBase, userId)
+  const { data: yesterdayProjects } = await supabase
+    .from("projects")
+    .select(
+      "id, name, slug, description, logo_url, website_url, launch_status, launch_type, daily_ranking, scheduled_launch_date, created_at",
+    )
+    .eq("launch_status", launchStatus.LAUNCHED)
+    .gte("scheduled_launch_date", yesterdayStart.toISOString())
+    .lt("scheduled_launch_date", yesterdayEnd.toISOString())
+
+  if (!yesterdayProjects) return []
+
+  const projectIds = yesterdayProjects.map((p) => p.id)
+  const { data: upvotes } = await supabase
+    .from("upvotes")
+    .select("project_id")
+    .in("project_id", projectIds)
+
+  const upvoteCounts: Record<string, number> = {}
+  for (const uv of upvotes || []) {
+    upvoteCounts[uv.project_id] = (upvoteCounts[uv.project_id] || 0) + 1
+  }
+
+  const sortedProjects = yesterdayProjects
+    .map((p) => mapProject({ ...p, upvoteCount: upvoteCounts[p.id] || 0 }))
+    .sort((a, b) => b.upvoteCount - a.upvoteCount)
+    .slice(0, limit)
+
+  return enrichProjectsWithUserData(sortedProjects, userId)
 }
 
 export async function getMonthBestProjects(limit: number = PROJECT_LIMITS_VARIABLES.MONTH_LIMIT) {
@@ -157,61 +206,53 @@ export async function getMonthBestProjects(limit: number = PROJECT_LIMITS_VARIAB
   const monthStart = startOfMonth(now)
   const monthEnd = endOfMonth(now)
 
-  const monthProjectsBase = await db
-    .select({
-      id: projectTable.id,
-      name: projectTable.name,
-      slug: projectTable.slug,
-      description: projectTable.description,
-      logoUrl: projectTable.logoUrl,
-      websiteUrl: projectTable.websiteUrl,
-      launchStatus: projectTable.launchStatus,
-      launchType: projectTable.launchType,
-      dailyRanking: projectTable.dailyRanking,
-      scheduledLaunchDate: projectTable.scheduledLaunchDate,
-      createdAt: projectTable.createdAt,
-      upvoteCount: sql<number>`cast(count(distinct ${upvote.id}) as int)`.mapWith(Number),
-      commentCount: sql<number>`cast(count(distinct ${fumaComments.id}) as int)`.mapWith(Number),
-    })
-    .from(projectTable)
-    .leftJoin(upvote, eq(upvote.projectId, projectTable.id))
-    .leftJoin(fumaComments, sql`"fuma_comments"."page"::text = ${projectTable.id}`)
-    .where(
-      and(
-        eq(projectTable.launchStatus, launchStatus.LAUNCHED),
-        sql`${projectTable.scheduledLaunchDate} >= ${monthStart.toISOString()}`,
-        sql`${projectTable.scheduledLaunchDate} <= ${monthEnd.toISOString()}`,
-      ),
-    )
-    .groupBy(projectTable.id)
-    .orderBy(desc(sql`count(distinct ${upvote.id})`))
-    .limit(limit)
+  const supabase = await createClient()
 
-  return enrichProjectsWithUserData(monthProjectsBase, userId)
+  const { data: monthProjects } = await supabase
+    .from("projects")
+    .select(
+      "id, name, slug, description, logo_url, website_url, launch_status, launch_type, daily_ranking, scheduled_launch_date, created_at",
+    )
+    .eq("launch_status", launchStatus.LAUNCHED)
+    .gte("scheduled_launch_date", monthStart.toISOString())
+    .lte("scheduled_launch_date", monthEnd.toISOString())
+
+  if (!monthProjects) return []
+
+  const projectIds = monthProjects.map((p) => p.id)
+  const { data: upvotes } = await supabase
+    .from("upvotes")
+    .select("project_id")
+    .in("project_id", projectIds)
+
+  const upvoteCounts: Record<string, number> = {}
+  for (const uv of upvotes || []) {
+    upvoteCounts[uv.project_id] = (upvoteCounts[uv.project_id] || 0) + 1
+  }
+
+  const sortedProjects = monthProjects
+    .map((p) => mapProject({ ...p, upvoteCount: upvoteCounts[p.id] || 0 }))
+    .sort((a, b) => b.upvoteCount - a.upvoteCount)
+    .slice(0, limit)
+
+  return enrichProjectsWithUserData(sortedProjects, userId)
 }
 
 export async function getFeaturedPremiumProjects() {
-  const projects = await db.query.project.findMany({
-    where: and(
-      eq(projectTable.featuredOnHomepage, true),
-      eq(projectTable.launchType, launchType.PREMIUM_PLUS),
-      eq(projectTable.launchStatus, launchStatus.ONGOING),
-    ),
-    columns: {
-      id: true,
-      name: true,
-      slug: true,
-      description: true,
-      logoUrl: true,
-      websiteUrl: true,
-      launchStatus: true,
-      launchType: true,
-      dailyRanking: true,
-    },
-    limit: 3,
-    orderBy: [desc(projectTable.createdAt)],
-  })
-  return projects
+  const supabase = await createClient()
+
+  const { data: projects } = await supabase
+    .from("projects")
+    .select(
+      "id, name, slug, description, logo_url, website_url, launch_status, launch_type, daily_ranking, created_at",
+    )
+    .eq("featured_on_homepage", true)
+    .eq("launch_type", launchType.PREMIUM_PLUS)
+    .eq("launch_status", launchStatus.ONGOING)
+    .order("created_at", { ascending: false })
+    .limit(3)
+
+  return (projects || []).map((p) => mapProject(p as never))
 }
 
 export async function getYesterdayTopProjects() {
@@ -221,27 +262,19 @@ export async function getYesterdayTopProjects() {
   const yesterdayEnd = new Date(yesterday)
   yesterdayEnd.setHours(23, 59, 59, 999)
 
-  const topProjects = await db
-    .select({
-      id: projectTable.id,
-      name: projectTable.name,
-      slug: projectTable.slug,
-      logoUrl: projectTable.logoUrl,
-      dailyRanking: projectTable.dailyRanking,
-    })
-    .from(projectTable)
-    .where(
-      and(
-        eq(projectTable.launchStatus, launchStatus.LAUNCHED),
-        sql`${projectTable.dailyRanking} IS NOT NULL`,
-        sql`${projectTable.scheduledLaunchDate} >= ${yesterday.toISOString()}`,
-        sql`${projectTable.scheduledLaunchDate} <= ${yesterdayEnd.toISOString()}`,
-      ),
-    )
-    .orderBy(projectTable.dailyRanking)
+  const supabase = await createClient()
+
+  const { data: topProjects } = await supabase
+    .from("projects")
+    .select("id, name, slug, logo_url, daily_ranking")
+    .eq("launch_status", launchStatus.LAUNCHED)
+    .not("daily_ranking", "is", null)
+    .gte("scheduled_launch_date", yesterday.toISOString())
+    .lte("scheduled_launch_date", yesterdayEnd.toISOString())
+    .order("daily_ranking", { ascending: true })
     .limit(3)
 
-  return topProjects
+  return (topProjects || []).map((p) => mapProject(p as never))
 }
 
 export async function getWinnersByDate(date: Date) {
@@ -251,35 +284,36 @@ export async function getWinnersByDate(date: Date) {
   const dayEnd = new Date(date)
   dayEnd.setHours(23, 59, 59, 999)
 
-  const winnersBase = await db
-    .select({
-      id: projectTable.id,
-      name: projectTable.name,
-      slug: projectTable.slug,
-      description: projectTable.description,
-      logoUrl: projectTable.logoUrl,
-      websiteUrl: projectTable.websiteUrl,
-      dailyRanking: projectTable.dailyRanking,
-      launchStatus: projectTable.launchStatus,
-      scheduledLaunchDate: projectTable.scheduledLaunchDate,
-      createdAt: projectTable.createdAt,
-      upvoteCount: sql<number>`cast(count(distinct ${upvote.id}) as int)`.mapWith(Number),
-      commentCount: sql<number>`cast(count(distinct ${fumaComments.id}) as int)`.mapWith(Number),
-    })
-    .from(projectTable)
-    .leftJoin(upvote, eq(upvote.projectId, projectTable.id))
-    .leftJoin(fumaComments, sql`"fuma_comments"."page"::text = ${projectTable.id}`)
-    .where(
-      and(
-        eq(projectTable.launchStatus, launchStatus.LAUNCHED),
-        sql`${projectTable.dailyRanking} IS NOT NULL`,
-        sql`${projectTable.dailyRanking} <= 3`,
-        sql`${projectTable.scheduledLaunchDate} >= ${dayStart.toISOString()}`,
-        sql`${projectTable.scheduledLaunchDate} <= ${dayEnd.toISOString()}`,
-      ),
-    )
-    .groupBy(projectTable.id)
-    .orderBy(projectTable.dailyRanking)
+  const supabase = await createClient()
 
-  return enrichProjectsWithUserData(winnersBase, userId)
+  const { data: winnersBase } = await supabase
+    .from("projects")
+    .select(
+      "id, name, slug, description, logo_url, website_url, daily_ranking, launch_status, scheduled_launch_date, created_at",
+    )
+    .eq("launch_status", launchStatus.LAUNCHED)
+    .not("daily_ranking", "is", null)
+    .lte("daily_ranking", 3)
+    .gte("scheduled_launch_date", dayStart.toISOString())
+    .lte("scheduled_launch_date", dayEnd.toISOString())
+    .order("daily_ranking", { ascending: true })
+
+  if (!winnersBase) return []
+
+  const projectIds = winnersBase.map((p) => p.id)
+  const { data: upvotes } = await supabase
+    .from("upvotes")
+    .select("project_id")
+    .in("project_id", projectIds)
+
+  const upvoteCounts: Record<string, number> = {}
+  for (const uv of upvotes || []) {
+    upvoteCounts[uv.project_id] = (upvoteCounts[uv.project_id] || 0) + 1
+  }
+
+  const winnersWithCounts = winnersBase.map((p) =>
+    mapProject({ ...p, upvoteCount: upvoteCounts[p.id] || 0 }),
+  )
+
+  return enrichProjectsWithUserData(winnersWithCounts, userId)
 }

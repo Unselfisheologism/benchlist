@@ -3,8 +3,6 @@ import { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
-import { db } from "@/drizzle/db"
-import { seoArticle } from "@/drizzle/db/schema"
 import {
   RiArticleLine,
   RiInformationLine,
@@ -13,12 +11,12 @@ import {
   RiTrophyLine,
   RiUserStarLine,
 } from "@remixicon/react"
-import { eq } from "drizzle-orm"
 import { ArrowLeft, Calendar, Clock } from "lucide-react"
 import { MDXRemote } from "next-mdx-remote/rsc"
 import remarkGfm from "remark-gfm"
 
 import { DOMAIN_AUTHORITY, LAUNCH_SETTINGS } from "@/lib/constants"
+import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -37,37 +35,43 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params
 
-  const article = await db.select().from(seoArticle).where(eq(seoArticle.slug, slug)).limit(1)
+  const supabase = await createClient()
+  const { data: article } = await supabase
+    .from("seo_articles")
+    .select("*")
+    .eq("slug", slug)
+    .limit(1)
+    .single()
 
-  if (!article[0]) {
+  if (!article) {
     return {
-      title: "Review not found | Open Launch",
+      title: "Review not found | Benchlist",
       description: "The review you're looking for doesn't exist or has been removed.",
     }
   }
 
-  const { title, description, metaTitle, metaDescription } = article[0]
+  const { title, description, meta_title, meta_description } = article as Record<string, string>
 
   return {
-    title: metaTitle || `${title} | Open Launch`,
-    description: metaDescription || description,
+    title: (meta_title as string) || `${title} | Benchlist`,
+    description: (meta_description as string) || description,
     keywords: "review, product review, analysis, evaluation",
-    authors: [{ name: "Open Launch Team" }],
+    authors: [{ name: "Benchlist Team" }],
     category: "Technology",
     openGraph: {
-      title: metaTitle || `${title} | Open Launch`,
-      description: metaDescription || description,
+      title: (meta_title as string) || `${title} | Benchlist`,
+      description: (meta_description as string) || description,
       type: "article",
       publishedTime: article[0].publishedAt.toISOString(),
-      siteName: "Open Launch",
+      siteName: "Benchlist",
       locale: "en_US",
     },
     twitter: {
       card: "summary_large_image",
-      title: metaTitle || `${title} | Open Launch`,
-      description: metaDescription || description,
-      creator: "@openlaunch",
-      site: "@openlaunch",
+      title: (meta_title as string) || `${title} | Benchlist`,
+      description: (meta_description as string) || description,
+      creator: "@benchlist",
+      site: "@benchlist",
     },
     alternates: {
       canonical: `/reviews/${slug}`,
@@ -93,14 +97,26 @@ function calculateReadingTime(content: string): string {
 export default async function ReviewPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
 
-  const article = await db.select().from(seoArticle).where(eq(seoArticle.slug, slug)).limit(1)
+  const supabase = await createClient()
+  const { data: article } = await supabase
+    .from("seo_articles")
+    .select("*")
+    .eq("slug", slug)
+    .limit(1)
+    .single()
 
-  if (!article[0]) {
+  if (!article) {
     notFound()
   }
 
-  const { title, description, content, publishedAt } = article[0]
-  const readingTime = calculateReadingTime(content)
+  const {
+    title,
+    description,
+    content: articleContent,
+    published_at,
+    image,
+  } = article as Record<string, string>
+  const readingTime = calculateReadingTime(articleContent)
 
   return (
     <div className="bg-background min-h-screen">
@@ -126,7 +142,9 @@ export default async function ReviewPage({ params }: { params: Promise<{ slug: s
                 <div className="text-muted-foreground mb-4 flex flex-wrap gap-4 text-sm">
                   <div className="flex items-center gap-1">
                     <Calendar className="h-4 w-4" />
-                    <time dateTime={publishedAt.toISOString()}>{formatDate(publishedAt)}</time>
+                    <time dateTime={published_at ? new Date(published_at).toISOString() : ""}>
+                      {formatDate(published_at ? new Date(published_at) : new Date())}
+                    </time>
                   </div>
                   <div className="flex items-center gap-1">
                     <Clock className="h-4 w-4" />
@@ -143,11 +161,7 @@ export default async function ReviewPage({ params }: { params: Promise<{ slug: s
                 {/* Hero Image */}
                 {article[0].image && (
                   <div className="bg-muted mb-8 aspect-[16/9] overflow-hidden rounded-lg">
-                    <img
-                      src={article[0].image}
-                      alt={title}
-                      className="h-full w-full object-cover"
-                    />
+                    <img src={image} alt={title} className="h-full w-full object-cover" />
                   </div>
                 )}
               </header>
@@ -155,7 +169,7 @@ export default async function ReviewPage({ params }: { params: Promise<{ slug: s
               {/* Article Content */}
               <div className="prose prose-neutral dark:prose-invert [&_table]:border-border [&_thead]:bg-muted/30 [&_th]:border-border [&_th]:text-foreground [&_td]:border-border [&_tbody_tr:hover]:bg-muted/20 [&_img]:border-border max-w-none [&_img]:mx-auto [&_img]:rounded-lg [&_img]:border [&_img]:sm:max-w-xl [&_table]:my-8 [&_table]:w-full [&_table]:border-collapse [&_table]:overflow-hidden [&_table]:rounded-lg [&_table]:border [&_tbody_tr:last-child_td]:border-b-0 [&_td]:border-r [&_td]:border-b [&_td]:px-4 [&_td]:py-3 [&_td]:align-middle [&_td]:text-sm [&_td:last-child]:border-r-0 [&_th]:border-r [&_th]:border-b [&_th]:px-4 [&_th]:py-3 [&_th]:text-left [&_th]:align-middle [&_th]:text-sm [&_th]:font-bold [&_th:last-child]:border-r-0">
                 <MDXRemote
-                  source={content}
+                  source={articleContent}
                   options={{
                     mdxOptions: {
                       remarkPlugins: [remarkGfm],

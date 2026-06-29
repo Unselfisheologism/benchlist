@@ -1,15 +1,15 @@
-import { headers } from "next/headers" // Importer headers pour auth
-
 import { createUploadthing, type FileRouter } from "uploadthing/next"
 import { UploadThingError } from "uploadthing/server"
 
-import { auth } from "@/lib/auth" // Importer l'authentification
+import { createClient } from "@/lib/supabase/server"
 
 const f = createUploadthing()
 
 const authenticateUser = async () => {
-  const session = await auth.api.getSession({ headers: await headers() })
-  const user = session?.user
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
   if (!user?.id) throw new UploadThingError("Unauthorized")
 

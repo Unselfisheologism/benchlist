@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server"
 
-import { db } from "@/drizzle/db"
-import { project } from "@/drizzle/db/schema"
-import { eq } from "drizzle-orm"
+import { createClient } from "@/lib/supabase/server"
 
 export async function GET(request: Request) {
   try {
@@ -16,11 +14,15 @@ export async function GET(request: Request) {
     // Normaliser l'URL pour la comparaison
     const normalizedUrl = url.toLowerCase().replace(/\/$/, "")
 
+    const supabase = await createClient()
+
     // Vérifier si l'URL existe déjà
-    const [existingProject] = await db
-      .select({ id: project.id, launchStatus: project.launchStatus })
-      .from(project)
-      .where(eq(project.websiteUrl, normalizedUrl))
+    const { data: existingProject } = await supabase
+      .from("projects")
+      .select("id, launch_status")
+      .eq("website_url", normalizedUrl)
+      .limit(1)
+      .single()
 
     // If no project found, the URL is available
     if (!existingProject) {
@@ -30,8 +32,8 @@ export async function GET(request: Request) {
     // If a project exists but is in PAYMENT_PENDING or PAYMENT_FAILED,
     // we consider the URL as available to allow re-submission
     if (
-      existingProject.launchStatus === "payment_pending" ||
-      existingProject.launchStatus === "payment_failed"
+      existingProject.launch_status === "payment_pending" ||
+      existingProject.launch_status === "payment_failed"
     ) {
       return NextResponse.json({ exists: false })
     }

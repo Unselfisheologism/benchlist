@@ -1,11 +1,6 @@
-import { headers } from "next/headers"
 import { NextResponse } from "next/server"
 
-import { db } from "@/drizzle/db"
-import { project as projectTable } from "@/drizzle/db/schema"
-import { eq } from "drizzle-orm"
-
-import { auth } from "@/lib/auth"
+import { createClient } from "@/lib/supabase/server"
 
 export async function GET(
   request: Request,
@@ -13,39 +8,38 @@ export async function GET(
 ) {
   try {
     // Vérifier l'authentification
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    })
-    if (!session?.user) {
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const projectId = (await params).projectId
 
     // Récupérer la chaîne
-    const [projectData] = await db
-      .select({
-        id: projectTable.id,
-        slug: projectTable.slug,
-        status: projectTable.launchStatus,
-        createdBy: projectTable.createdBy,
-      })
-      .from(projectTable)
-      .where(eq(projectTable.id, projectId))
+    const { data: projectData } = await supabase
+      .from("projects")
+      .select("id, slug, launch_status, created_by")
+      .eq("id", projectId)
+      .limit(1)
+      .single()
 
     if (!projectData) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 })
     }
 
     // Vérifier que l'utilisateur est le propriétaire de la chaîne
-    if (projectData.createdBy !== session.user.id) {
+    if (projectData.created_by !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
     return NextResponse.json({
       id: projectData.id,
       slug: projectData.slug,
-      status: projectData.status,
+      status: projectData.launch_status,
     })
   } catch (error) {
     console.error("Error fetching project status:", error)

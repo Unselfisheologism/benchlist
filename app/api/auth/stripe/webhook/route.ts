@@ -1,13 +1,39 @@
 import { revalidatePath } from "next/cache"
 import { NextResponse } from "next/server"
 
-import { db } from "@/drizzle/db"
-import { launchQuota, launchStatus, launchType, project } from "@/drizzle/db/schema"
-import { eq, sql } from "drizzle-orm"
 import Stripe from "stripe"
 
+import { createClient } from "@/lib/supabase/server"
+
+// Lazily initialized to avoid build-time errors when env vars are missing
+let stripe: Stripe | null = null
+
+function getStripe(): Stripe {
+  if (!stripe) {
+    if (!process.env.STRIPE_SECRET_KEY) {
+      throw new Error("STRIPE_SECRET_KEY environment variable is not set")
+    }
+    stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
+  }
+  return stripe
+}
+
+// Constantes pour les statuts de lancement
+const launchStatus = {
+  PAYMENT_PENDING: "payment_pending",
+  PAYMENT_FAILED: "payment_failed",
+  SCHEDULED: "scheduled",
+  ONGOING: "ongoing",
+  LAUNCHED: "launched",
+} as const
+
+const launchType = {
+  FREE: "free",
+  PREMIUM: "premium",
+  PREMIUM_PLUS: "premium_plus",
+} as const
+
 // Initialiser le client Stripe
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!
 
 export async function POST(request: Request) {
@@ -18,7 +44,7 @@ export async function POST(request: Request) {
     // Vérifier la signature du webhook
     let event: Stripe.Event
     try {
-      event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
+      event = getStripe().webhooks.constructEvent(body, signature, webhookSecret)
     } catch (err) {
       console.error("Webhook signature verification failed:", err)
       return NextResponse.json({ error: "Webhook signature verification failed" }, { status: 400 })
@@ -40,72 +66,74 @@ export async function POST(request: Request) {
 
       // Vérifier si le paiement a réussi
       if (session.payment_status === "paid") {
+        const supabase = await createClient()
+
         // Récupérer les informations de la chaîne
-        const [projectData] = await db
-          .select({
-            id: project.id,
-            launchType: project.launchType,
-            scheduledLaunchDate: project.scheduledLaunchDate,
-          })
-          .from(project)
-          .where(eq(project.id, projectId))
+        const { data: projectData } = await supabase
+          .from("projects")
+          .select("id, launch_type, scheduled_launch_date")
+          .eq("id", projectId)
+          .limit(1)
+          .single()
 
         if (!projectData) {
           console.error("Project not found:", projectId)
           return NextResponse.json({ error: "Project not found" }, { status: 404 })
         }
 
-        if (!projectData.scheduledLaunchDate) {
+        if (!projectData.scheduled_launch_date) {
           console.error("Project data incomplete:", projectId)
           return NextResponse.json({ error: "Project data incomplete" }, { status: 400 })
         }
 
         // Update the project status to 'scheduled'
-        await db
-          .update(project)
-          .set({
-            launchStatus: launchStatus.SCHEDULED,
+        await supabase
+          .from("projects")
+          .update({
+            launch_status: launchStatus.SCHEDULED,
             // Pour Premium Plus, activer la mise en avant sur la page d'accueil
-            featuredOnHomepage: projectData.launchType === launchType.PREMIUM_PLUS,
-            updatedAt: new Date(),
+            featured_on_homepage: projectData.launch_type === launchType.PREMIUM_PLUS,
+            updated_at: new Date().toISOString(),
           })
-          .where(eq(project.id, projectId))
+          .eq("id", projectId)
 
         // Mettre à jour le quota pour cette date
-        const launchDate = projectData.scheduledLaunchDate
-        const quotaResult = await db
-          .select()
-          .from(launchQuota)
-          .where(eq(launchQuota.date, launchDate))
+        const launchDate = projectData.scheduled_launch_date
+
+        const { data: quotaResult } = await supabase
+          .from("launch_quota")
+          .select("*")
+          .eq("date", launchDate)
           .limit(1)
 
-        if (quotaResult.length === 0) {
+        if (!quotaResult || quotaResult.length === 0) {
           // Créer un nouveau quota
-          await db.insert(launchQuota).values({
+          await supabase.from("launch_quota").insert({
             id: crypto.randomUUID(),
             date: launchDate,
-            freeCount: 0,
-            premiumCount: projectData.launchType === launchType.PREMIUM ? 1 : 0,
-            premiumPlusCount: projectData.launchType === launchType.PREMIUM_PLUS ? 1 : 0,
-            createdAt: new Date(),
-            updatedAt: new Date(),
+            free_count: 0,
+            premium_count: projectData.launch_type === launchType.PREMIUM ? 1 : 0,
+            premium_plus_count: projectData.launch_type === launchType.PREMIUM_PLUS ? 1 : 0,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
           })
         } else {
           // Mettre à jour le quota existant
-          await db
-            .update(launchQuota)
-            .set({
-              premiumCount:
-                projectData.launchType === launchType.PREMIUM
-                  ? sql`${launchQuota.premiumCount} + 1`
-                  : launchQuota.premiumCount,
-              premiumPlusCount:
-                projectData.launchType === launchType.PREMIUM_PLUS
-                  ? sql`${launchQuota.premiumPlusCount} + 1`
-                  : launchQuota.premiumPlusCount,
-              updatedAt: new Date(),
+          const existingQuota = quotaResult[0]
+          await supabase
+            .from("launch_quota")
+            .update({
+              premium_count:
+                projectData.launch_type === launchType.PREMIUM
+                  ? existingQuota.premium_count + 1
+                  : existingQuota.premium_count,
+              premium_plus_count:
+                projectData.launch_type === launchType.PREMIUM_PLUS
+                  ? existingQuota.premium_plus_count + 1
+                  : existingQuota.premium_plus_count,
+              updated_at: new Date().toISOString(),
             })
-            .where(eq(launchQuota.id, quotaResult[0].id))
+            .eq("id", existingQuota.id)
         }
 
         // Revalidate the project page path using the project ID
@@ -119,13 +147,14 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: true })
       } else {
         // Si le paiement n'a pas réussi, mettre à jour le statut à PAYMENT_FAILED
-        await db
-          .update(project)
-          .set({
-            launchStatus: launchStatus.PAYMENT_FAILED,
-            updatedAt: new Date(),
+        const supabase = await createClient()
+        await supabase
+          .from("projects")
+          .update({
+            launch_status: launchStatus.PAYMENT_FAILED,
+            updated_at: new Date().toISOString(),
           })
-          .where(eq(project.id, projectId))
+          .eq("id", projectId)
 
         return NextResponse.json({ success: true })
       }
@@ -134,14 +163,15 @@ export async function POST(request: Request) {
       const projectId = session.client_reference_id
 
       if (projectId) {
+        const supabase = await createClient()
         // Mettre à jour le statut de la chaîne à PAYMENT_FAILED
-        await db
-          .update(project)
-          .set({
-            launchStatus: launchStatus.PAYMENT_FAILED,
-            updatedAt: new Date(),
+        await supabase
+          .from("projects")
+          .update({
+            launch_status: launchStatus.PAYMENT_FAILED,
+            updated_at: new Date().toISOString(),
           })
-          .where(eq(project.id, projectId))
+          .eq("id", projectId)
       }
 
       return NextResponse.json({ success: true })

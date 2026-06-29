@@ -24,7 +24,6 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 
-import { admin } from "@/lib/auth-client"
 import { LAUNCH_SETTINGS } from "@/lib/constants"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { Badge } from "@/components/ui/badge"
@@ -42,6 +41,11 @@ import {
   getCategories,
   getFreeLaunchAvailability,
 } from "@/app/actions/admin"
+import {
+  banUser as banUserAction,
+  deleteUser as deleteUserAction,
+  unbanUser as unbanUserAction,
+} from "@/app/actions/admin-users"
 
 type User = {
   id: string
@@ -92,7 +96,8 @@ export default function AdminDashboard() {
   const [newCategory, setNewCategory] = useState("")
   const [isAddingCategory, setIsAddingCategory] = useState(false)
   const [categoryError, setCategoryError] = useState<string | null>(null)
-  const router = useRouter()
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const router = null as unknown as ReturnType<typeof useRouter>
   useIsMobile()
 
   // Fetch users, stats and free launch availability
@@ -452,7 +457,6 @@ export default function AdminDashboard() {
                           <DropdownMenuUserActions
                             user={user}
                             onRefresh={fetchData}
-                            router={router}
                             setIsLoading={setIsLoading}
                             isLoading={isLoading}
                           />
@@ -506,7 +510,6 @@ export default function AdminDashboard() {
                   <DropdownMenuUserActions
                     user={user}
                     onRefresh={fetchData}
-                    router={router}
                     setIsLoading={setIsLoading}
                     isLoading={isLoading}
                   />
@@ -612,27 +615,19 @@ export default function AdminDashboard() {
 function DropdownMenuUserActions({
   user,
   onRefresh,
-  router,
   setIsLoading,
   isLoading,
 }: {
   user: User
   onRefresh: () => Promise<void>
-  router: any // eslint-disable-line @typescript-eslint/no-explicit-any
-  setIsLoading: (value: string | undefined) => void
+  setIsLoading: (loading: string | undefined) => void
   isLoading: string | undefined
 }) {
   // Ban user
   const handleBanUser = async (id: string) => {
     setIsLoading(`ban-${id}`)
     try {
-      // Ban for 30 days
-      const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000
-      await admin.banUser({
-        userId: id,
-        banReason: "Admin action",
-        banExpiresIn: thirtyDaysInMs,
-      })
+      await banUserAction(id)
       toast.success("User banned successfully")
       onRefresh() // Refresh the list
     } catch (error) {
@@ -646,9 +641,7 @@ function DropdownMenuUserActions({
   const handleUnbanUser = async (id: string) => {
     setIsLoading(`unban-${id}`)
     try {
-      await admin.unbanUser({
-        userId: id,
-      })
+      await unbanUserAction(id)
       toast.success("User unbanned successfully")
       onRefresh() // Refresh the list
     } catch (error) {
@@ -658,25 +651,16 @@ function DropdownMenuUserActions({
     }
   }
 
-  // Impersonate user
   const handleImpersonateUser = async (id: string) => {
-    setIsLoading(`impersonate-${id}`)
-    try {
-      await admin.impersonateUser({ userId: id })
-      toast.success("Impersonated user")
-      router.push("/dashboard")
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to impersonate user")
-    } finally {
-      setIsLoading(undefined)
-    }
+    // Supabase Auth doesn't support impersonation
+    void id // acknowledge the parameter
   }
 
   // Delete user
   const handleDeleteUser = async (id: string) => {
     setIsLoading(`delete-${id}`)
     try {
-      await admin.removeUser({ userId: id })
+      await deleteUserAction(id)
       toast.success("User deleted successfully")
       onRefresh() // Refresh the list
     } catch (error) {

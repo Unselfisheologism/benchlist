@@ -1,104 +1,124 @@
 "use server"
 
-import { headers } from "next/headers"
-
-import { db } from "@/drizzle/db"
-import { category, project, user } from "@/drizzle/db/schema"
+import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js"
 import { addDays, format } from "date-fns"
-import { and, desc, eq, gte, sql } from "drizzle-orm"
 
-import { auth } from "@/lib/auth"
 import { DATE_FORMAT, LAUNCH_SETTINGS } from "@/lib/constants"
+import { createClient } from "@/lib/supabase/server"
 
 import { getLaunchAvailabilityRange } from "./launch"
 
+const getAdminClient = () =>
+  createSupabaseAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
+
 // Vérification des droits admin
 async function checkAdminAccess() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  })
-  if (!session?.user?.role || session.user.role !== "admin") {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user || user.user_metadata?.role !== "admin") {
     throw new Error("Unauthorized: Admin access required")
   }
 }
 
 // Get all users and launch stats
 export async function getAdminStatsAndUsers() {
+  const supabase = await getAdminClient()
   await checkAdminAccess()
 
   // Get all users, sorted by registration date descending
-  const usersData = await db.select().from(user).orderBy(desc(user.createdAt))
+  const { data: usersData, error: usersError } = await supabase
+    .from("user")
+    .select("*")
+    .order("created_at", { ascending: false })
+
+  if (usersError) throw usersError
 
   // Get project counts for each user
-  const projectCounts = await db
-    .select({
-      userId: project.createdBy,
-      count: sql<number>`count(*)::int`,
-    })
-    .from(project)
-    .where(sql`${project.createdBy} IS NOT NULL`)
-    .groupBy(project.createdBy)
+  const { data: projectCountsData, error: pcError } = await supabase
+    .from("project")
+    .select("created_by")
+    .not("created_by", "is", null)
 
-  // Create a map for quick lookup
-  const projectCountMap = new Map(projectCounts.map((pc) => [pc.userId, pc.count]))
+  if (pcError) throw pcError
+
+  // Compute project count map
+  const countMap = new Map<string, number>()
+  for (const row of projectCountsData ?? []) {
+    const uid = row.created_by as string
+    countMap.set(uid, (countMap.get(uid) ?? 0) + 1)
+  }
 
   // Combine user data with project counts
-  const users = usersData.map((u) => ({
+  const users = (usersData ?? []).map((u) => ({
     ...u,
-    hasLaunched: (projectCountMap.get(u.id) || 0) > 0,
-    projectCount: projectCountMap.get(u.id) || 0,
+    hasLaunched: (countMap.get(u.id) || 0) > 0,
+    projectCount: countMap.get(u.id) || 0,
   }))
 
-  // Get today's date at midnight UTC
+  // Get today's date at midnight UTC as ISO string
   const today = new Date()
   today.setUTCHours(0, 0, 0, 0)
+  const todayISO = today.toISOString()
 
   // Get new users today
-  const newUsersToday = await db
-    .select({ count: sql`count(*)` })
-    .from(user)
-    .where(gte(user.createdAt, today))
+  const { count: newUsersToday } = await supabase
+    .from("user")
+    .select("*", { count: "exact", head: true })
+    .gte("created_at", todayISO)
 
-  // Get launch stats
-  const totalLaunches = await db.select({ count: sql`count(*)` }).from(project)
-  const premiumLaunches = await db
-    .select({ count: sql`count(*)` })
-    .from(project)
-    .where(eq(project.launchType, "premium"))
-  const premiumPlusLaunches = await db
-    .select({ count: sql`count(*)` })
-    .from(project)
-    .where(eq(project.launchType, "premium_plus"))
+  // Get launch stats — total launches
+  const { count: totalLaunches } = await supabase
+    .from("project")
+    .select("*", { count: "exact", head: true })
 
-  // Get new launches today
-  const newLaunchesToday = await db
-    .select({ count: sql`count(*)` })
-    .from(project)
-    .where(gte(project.createdAt, today))
+  // Premium launches
+  const { count: premiumLaunches } = await supabase
+    .from("project")
+    .select("*", { count: "exact", head: true })
+    .eq("launch_type", "premium")
 
-  // Get new premium launches today
-  const newPremiumLaunchesToday = await db
-    .select({ count: sql`count(*)` })
-    .from(project)
-    .where(and(gte(project.createdAt, today), eq(project.launchType, "premium")))
+  // Premium plus launches
+  const { count: premiumPlusLaunches } = await supabase
+    .from("project")
+    .select("*", { count: "exact", head: true })
+    .eq("launch_type", "premium_plus")
 
-  // Get new premium plus launches today
-  const newPremiumPlusLaunchesToday = await db
-    .select({ count: sql`count(*)` })
-    .from(project)
-    .where(and(gte(project.createdAt, today), eq(project.launchType, "premium_plus")))
+  // New launches today
+  const { count: newLaunchesToday } = await supabase
+    .from("project")
+    .select("*", { count: "exact", head: true })
+    .gte("created_at", todayISO)
+
+  // New premium launches today
+  const { count: newPremiumLaunchesToday } = await supabase
+    .from("project")
+    .select("*", { count: "exact", head: true })
+    .gte("created_at", todayISO)
+    .eq("launch_type", "premium")
+
+  // New premium plus launches today
+  const { count: newPremiumPlusLaunchesToday } = await supabase
+    .from("project")
+    .select("*", { count: "exact", head: true })
+    .gte("created_at", todayISO)
+    .eq("launch_type", "premium_plus")
 
   return {
     users,
     stats: {
-      totalLaunches: Number(totalLaunches[0]?.count || 0),
-      premiumLaunches: Number(premiumLaunches[0]?.count || 0),
-      premiumPlusLaunches: Number(premiumPlusLaunches[0]?.count || 0),
+      totalLaunches: Number(totalLaunches || 0),
+      premiumLaunches: Number(premiumLaunches || 0),
+      premiumPlusLaunches: Number(premiumPlusLaunches || 0),
       totalUsers: users.length,
-      newUsersToday: Number(newUsersToday[0]?.count || 0),
-      newLaunchesToday: Number(newLaunchesToday[0]?.count || 0),
-      newPremiumLaunchesToday: Number(newPremiumLaunchesToday[0]?.count || 0),
-      newPremiumPlusLaunchesToday: Number(newPremiumPlusLaunchesToday[0]?.count || 0),
+      newUsersToday: Number(newUsersToday || 0),
+      newLaunchesToday: Number(newLaunchesToday || 0),
+      newPremiumLaunchesToday: Number(newPremiumLaunchesToday || 0),
+      newPremiumPlusLaunchesToday: Number(newPremiumPlusLaunchesToday || 0),
     },
   }
 }
@@ -129,25 +149,29 @@ export async function getFreeLaunchAvailability() {
 
 // Get all categories
 export async function getCategories() {
+  const supabase = await getAdminClient()
   await checkAdminAccess()
 
-  const categories = await db
-    .select({
-      name: category.name,
-    })
-    .from(category)
-    .orderBy(category.name)
+  const { data: categories, error: catError } = await supabase
+    .from("category")
+    .select("name")
+    .order("name", { ascending: true })
 
-  const totalCount = await db.select({ count: sql<number>`count(*)::int` }).from(category)
+  if (catError) throw catError
+
+  const { count: totalCount } = await supabase
+    .from("category")
+    .select("*", { count: "exact", head: true })
 
   return {
-    categories,
-    totalCount: totalCount[0]?.count || 0,
+    categories: categories ?? [],
+    totalCount: totalCount ?? 0,
   }
 }
 
 // Add a new category
 export async function addCategory(name: string) {
+  const supabase = await getAdminClient()
   await checkAdminAccess()
 
   // Name validation
@@ -163,25 +187,30 @@ export async function addCategory(name: string) {
   }
 
   try {
+    const id = trimmedName.toLowerCase().replace(/\s+/g, "-")
+
     // Check if category already exists
-    const existingCategory = await db
-      .select()
-      .from(category)
-      .where(eq(category.name, trimmedName))
+    const { data: existing, error: existError } = await supabase
+      .from("category")
+      .select("id")
+      .eq("name", trimmedName)
       .limit(1)
 
-    if (existingCategory.length > 0) {
+    if (existError) throw existError
+
+    if (existing && existing.length > 0) {
       return { success: false, error: "This category already exists" }
     }
 
-    const id = trimmedName.toLowerCase().replace(/\s+/g, "-")
+    const { error: insertError } = await supabase.from("category").insert({ id, name: trimmedName })
 
-    await db.insert(category).values({
-      id,
-      name: trimmedName,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    })
+    if (insertError) {
+      if (insertError.message.includes("unique") || insertError.code === "23505") {
+        return { success: false, error: "This category already exists" }
+      }
+      throw insertError
+    }
+
     return { success: true }
   } catch (error) {
     console.error("Error adding category:", error)
@@ -190,4 +219,39 @@ export async function addCategory(name: string) {
     }
     return { success: false, error: "An error occurred while adding the category" }
   }
+}
+
+// Ban user
+export async function banUser(userId: string) {
+  const supabase = await getAdminClient()
+  await checkAdminAccess()
+  const { error } = await supabase.from("user").update({ banned: true }).eq("id", userId)
+  if (error) throw error
+}
+
+// Unban user
+export async function unbanUser(userId: string) {
+  const supabase = await getAdminClient()
+  await checkAdminAccess()
+  const { error } = await supabase
+    .from("user")
+    .update({ banned: false, ban_reason: null, ban_expires: null })
+    .eq("id", userId)
+  if (error) throw error
+}
+
+// Delete user
+export async function deleteUser(userId: string) {
+  const supabase = await getAdminClient()
+  await checkAdminAccess()
+  const { error } = await supabase.from("user").delete().eq("id", userId)
+  if (error) throw error
+}
+
+// Update user role
+export async function updateUserRole(userId: string, role: string) {
+  const supabase = await getAdminClient()
+  await checkAdminAccess()
+  const { error } = await supabase.from("user").update({ role }).eq("id", userId)
+  if (error) throw error
 }

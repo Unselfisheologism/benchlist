@@ -1,7 +1,6 @@
-import { headers } from "next/headers"
 import Link from "next/link"
 
-import { auth } from "@/lib/auth"
+import { createClient } from "@/lib/supabase/server"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { ProjectSection } from "@/components/home/project-section"
@@ -18,9 +17,10 @@ export default async function Home() {
   const last30DaysVisitors = await getLast30DaysVisitors()
   const last30DaysPageviews = await getLast30DaysPageviews()
 
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  })
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
   return (
     <main className="min-h-screen">
@@ -73,7 +73,7 @@ export default async function Home() {
               title="Trending This Week"
               projects={todayProjects}
               sortByUpvotes={true}
-              isAuthenticated={!!session?.user}
+              isAuthenticated={!!user}
             />
 
             <ProjectSection
@@ -81,7 +81,7 @@ export default async function Home() {
               projects={yesterdayProjects}
               moreHref="/trending?filter=yesterday"
               sortByUpvotes={true}
-              isAuthenticated={!!session?.user}
+              isAuthenticated={!!user}
             />
 
             <ProjectSection
@@ -89,7 +89,7 @@ export default async function Home() {
               projects={monthProjects}
               moreHref="/trending?filter=month"
               sortByUpvotes={true}
-              isAuthenticated={!!session?.user}
+              isAuthenticated={!!user}
             />
           </div>
 
@@ -147,7 +147,7 @@ export default async function Home() {
             <div className="space-y-3">
               <h3 className="font-semibold">Quick Access</h3>
               <div className="space-y-1">
-                {session?.user && (
+                {user && (
                   <Link
                     href="/dashboard"
                     className="-mx-2 flex items-center gap-2 rounded-md p-2 text-sm transition-colors hover:underline"

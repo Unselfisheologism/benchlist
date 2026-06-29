@@ -1,14 +1,14 @@
-import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 
-import { auth } from "@/lib/auth"
+import { createClient } from "@/lib/supabase/server"
 
 export default async function Layout({ children }: { children: React.ReactNode }) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  })
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  if (session?.user) redirect("/dashboard")
+  if (user) redirect("/dashboard")
 
   return <>{children}</>
 }

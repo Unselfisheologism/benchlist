@@ -6,7 +6,7 @@ import Link from "next/link"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 
-import { forgetPassword } from "@/lib/auth-client"
+import { createClient } from "@/lib/supabase/client"
 import { ForgotPasswordFormData, forgotPasswordSchema } from "@/lib/validations/auth"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -41,19 +41,19 @@ export function ForgotPasswordForm() {
       setError(null)
       setSubmittedEmail(data.email)
 
-      await forgetPassword({
-        email: data.email,
-        redirectTo: "/reset-password",
-        fetchOptions: {
-          headers: {
-            "x-captcha-response": turnstileToken,
-          },
-        },
+      const supabase = createClient()
+      const { error } = await supabase.auth.resetPasswordForEmail(data.email, {
+        redirectTo: `${window.location.origin}/auth/callback?next=/settings`,
       })
 
-      setSuccess(true)
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "An error occurred")
+      if (error) {
+        setError(error.message)
+        setSuccess(false)
+      } else {
+        setSuccess(true)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred")
       setSuccess(false)
     } finally {
       setLoading(false)

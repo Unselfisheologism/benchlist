@@ -2,44 +2,44 @@
 import { Metadata } from "next"
 import Link from "next/link"
 
-import { db } from "@/drizzle/db"
-import { blogArticle } from "@/drizzle/db/schema"
-import { desc } from "drizzle-orm"
 import { Calendar, Clock } from "lucide-react"
 
+import { createClient } from "@/lib/supabase/server"
+
 export const metadata: Metadata = {
-  title: "Blog | Open Launch - Insights & Resources",
+  title: "Blog | Benchlist - Insights & Resources",
   description:
     "Discover insights, tutorials, and resources to help you build and launch successful products.",
   keywords: "blog, insights, tutorials, product launch, entrepreneurship, technology, startup",
-  authors: [{ name: "Open Launch Team" }],
+  authors: [{ name: "Benchlist Team" }],
   openGraph: {
-    title: "Blog | Open Launch - Insights & Resources",
+    title: "Blog | Benchlist - Insights & Resources",
     description:
       "Discover insights, tutorials, and resources to help you build and launch successful products.",
     type: "website",
     url: "/blog",
-    siteName: "Open Launch",
+    siteName: "Benchlist",
     images: [
       {
         url: "/og-blog.png",
         width: 1200,
         height: 630,
-        alt: "Open Launch Blog",
+        alt: "Benchlist Blog",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Blog | Open Launch - Insights & Resources",
+    title: "Blog | Benchlist - Insights & Resources",
     description:
       "Discover insights, tutorials, and resources to help you build and launch successful products.",
     images: ["/og-blog.png"],
   },
 }
 
-function formatDate(date: Date): string {
-  return date.toLocaleDateString("en-US", {
+function formatDate(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date
+  return d.toLocaleDateString("en-US", {
     year: "numeric",
     month: "long",
     day: "numeric",
@@ -54,7 +54,13 @@ function calculateReadingTime(content: string): string {
 }
 
 async function getArticles() {
-  const articles = await db.select().from(blogArticle).orderBy(desc(blogArticle.publishedAt))
+  const supabase = await createClient()
+  const { data: articles } = await supabase
+    .from("blog_articles")
+    .select("*")
+    .order("published_at", { ascending: false })
+
+  if (!articles) return []
 
   return articles.map((article) => ({
     ...article,
@@ -139,8 +145,8 @@ export default async function BlogPage() {
                     <div className="text-muted-foreground mb-3 flex items-center gap-4 text-sm">
                       <div className="flex items-center gap-1">
                         <Calendar className="h-4 w-4" />
-                        <time dateTime={article.publishedAt.toISOString()}>
-                          {formatDate(article.publishedAt)}
+                        <time dateTime={new Date(article.published_at).toISOString()}>
+                          {formatDate(article.published_at)}
                         </time>
                       </div>
                       <div className="flex items-center gap-1">

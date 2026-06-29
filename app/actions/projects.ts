@@ -1,20 +1,8 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { headers } from "next/headers"
 
-import { db } from "@/drizzle/db"
-import {
-  category as categoryTable,
-  fumaComments,
-  project,
-  project as projectTable,
-  projectToCategory,
-  upvote,
-} from "@/drizzle/db/schema"
-import { and, asc, count, desc, eq, or, sql } from "drizzle-orm"
-
-import { auth } from "@/lib/auth"
+import { createClient } from "@/lib/supabase/server"
 
 // Fonction pour générer un slug unique
 async function generateUniqueSlug(name: string): Promise<string> {
@@ -23,10 +11,15 @@ async function generateUniqueSlug(name: string): Promise<string> {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
 
-  // Vérifier si le slug existe déjà dans la table project
-  const existingProject = await db.query.project.findFirst({
-    where: eq(projectTable.slug, baseSlug),
-  })
+  const supabase = await createClient()
+
+  // Vérifier si le slug existe déjà dans la table projects
+  const { data: existingProject } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("slug", baseSlug)
+    .limit(1)
+    .single()
 
   if (!existingProject) {
     return baseSlug
@@ -37,58 +30,73 @@ async function generateUniqueSlug(name: string): Promise<string> {
   return `${baseSlug}-${randomSuffix}`
 }
 
-// Get session helper
-async function getSession() {
-  return auth.api.getSession({
-    headers: await headers(),
-  })
-}
-
 // Get all categories
 export async function getAllCategories() {
-  const categories = await db.select().from(categoryTable).orderBy(categoryTable.name)
-  return categories
+  const supabase = await createClient()
+  const { data: categories } = await supabase.from("categories").select("*").order("name")
+  return categories || []
 }
 
 // Get top categories based on project count
 export async function getTopCategories(limit = 5) {
-  const topCategories = await db
-    .select({
-      id: categoryTable.id,
-      name: categoryTable.name,
-      count: count(projectToCategory.projectId),
-    })
-    .from(categoryTable)
-    .leftJoin(projectToCategory, eq(categoryTable.id, projectToCategory.categoryId))
-    .leftJoin(project, eq(projectToCategory.projectId, project.id))
-    .where(or(eq(project.launchStatus, "ongoing"), eq(project.launchStatus, "launched")))
-    .groupBy(categoryTable.id, categoryTable.name)
-    .orderBy(desc(count(projectToCategory.projectId)))
-    .limit(limit)
+  const supabase = await createClient()
 
-  return topCategories
+  // Récupérer les catégories avec le nombre de projets
+  const { data: categories } = await supabase
+    .from("categories")
+    .select("id, name, project_to_category(project_id)")
+
+  if (!categories) return []
+
+  // Compter les projets par catégorie (ongoing ou launched)
+  const { data: projects } = await supabase
+    .from("projects")
+    .select("id, launch_status")
+    .in("launch_status", ["ongoing", "launched"])
+
+  const projectIds = new Set(projects?.map((p) => p.id) || [])
+
+  const categoriesWithCount = categories
+    .map((cat) => ({
+      id: cat.id,
+      name: cat.name,
+      count: cat.project_to_category.filter((pc: { project_id: string }) =>
+        projectIds.has(pc.project_id),
+      ).length,
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, limit)
+
+  return categoriesWithCount
 }
 
 // Get user's upvoted projects
 export async function getUserUpvotedProjects() {
-  const session = await getSession()
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  if (!session?.user?.id) {
+  if (!user?.id) {
     return []
   }
 
-  const upvotedProjects = await db
-    .select({
-      project: projectTable,
-      upvotedAt: upvote.createdAt,
-    })
-    .from(upvote)
-    .innerJoin(projectTable, eq(upvote.projectId, projectTable.id))
-    .where(eq(upvote.userId, session.user.id))
-    .orderBy(desc(upvote.createdAt))
+  const { data: upvotes } = await supabase
+    .from("upvotes")
+    .select("project_id, created_at, projects(*)")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
     .limit(10)
 
-  return upvotedProjects
+  if (!upvotes) return []
+
+  return upvotes.map((uv) => {
+    const proj = Array.isArray(uv.projects) ? uv.projects[0] : uv.projects
+    return {
+      project: proj,
+      upvotedAt: uv.created_at,
+    }
+  })
 }
 
 // La fonction getUserComments ne devrait plus être nécessaire car gérée par Fuma Comment
@@ -98,27 +106,33 @@ export async function getUserComments() {
 
 // Get projects created by user
 export async function getUserCreatedProjects() {
-  const session = await getSession()
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  if (!session?.user?.id) {
+  if (!user?.id) {
     return []
   }
 
-  const userProjects = await db
-    .select()
-    .from(projectTable)
-    .where(eq(projectTable.createdBy, session.user.id))
-    .orderBy(desc(projectTable.createdAt))
+  const { data: userProjects } = await supabase
+    .from("projects")
+    .select("*")
+    .eq("created_by", user.id)
+    .order("created_at", { ascending: false })
     .limit(10)
 
-  return userProjects
+  return userProjects || []
 }
 
 // Toggle upvote on a project
 export async function toggleUpvote(projectId: string) {
-  const session = await getSession()
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  if (!session?.user?.id) {
+  if (!user?.id) {
     return {
       success: false,
       message: "You must be logged in to upvote",
@@ -131,7 +145,7 @@ export async function toggleUpvote(projectId: string) {
 
   // Rate limiting pour les upvotes en utilisant les constantes
   const { success, reset } = await rateLimit.checkRateLimit(
-    `upvote:${session.user.id}`,
+    `upvote:${user.id}`,
     UPVOTE_LIMITS.ACTIONS_PER_WINDOW,
     UPVOTE_LIMITS.TIME_WINDOW_MS,
   )
@@ -144,14 +158,18 @@ export async function toggleUpvote(projectId: string) {
   }
 
   // Vérifier si l'utilisateur a déjà fait une action sur ce project récemment
-  const lastAction = await db.query.upvote.findFirst({
-    where: and(eq(upvote.userId, session.user.id), eq(upvote.projectId, projectId)),
-    orderBy: [desc(upvote.createdAt)],
-  })
+  const { data: lastAction } = await supabase
+    .from("upvotes")
+    .select("created_at")
+    .eq("user_id", user.id)
+    .eq("project_id", projectId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single()
 
   // Si une action existe et a été créée il y a moins de X secondes (défini dans les constantes), bloquer
-  if (lastAction?.createdAt) {
-    const timeSinceLastAction = Date.now() - lastAction.createdAt.getTime()
+  if (lastAction?.created_at) {
+    const timeSinceLastAction = Date.now() - new Date(lastAction.created_at).getTime()
     if (timeSinceLastAction < UPVOTE_LIMITS.MIN_TIME_BETWEEN_ACTIONS_MS) {
       return {
         success: false,
@@ -161,23 +179,22 @@ export async function toggleUpvote(projectId: string) {
   }
 
   // Check if the user has already upvoted the project
-  const existingUpvote = await db
-    .select()
-    .from(upvote)
-    .where(and(eq(upvote.userId, session.user.id), eq(upvote.projectId, projectId)))
+  const { data: existingUpvote } = await supabase
+    .from("upvotes")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("project_id", projectId)
     .limit(1)
 
   // If upvote exists, remove it, otherwise add it
-  if (existingUpvote.length > 0) {
-    await db
-      .delete(upvote)
-      .where(and(eq(upvote.userId, session.user.id), eq(upvote.projectId, projectId)))
+  if (existingUpvote && existingUpvote.length > 0) {
+    await supabase.from("upvotes").delete().eq("user_id", user.id).eq("project_id", projectId)
   } else {
-    await db.insert(upvote).values({
+    await supabase.from("upvotes").insert({
       id: crypto.randomUUID(),
-      userId: session.user.id,
-      projectId,
-      createdAt: new Date(),
+      user_id: user.id,
+      project_id: projectId,
+      created_at: new Date().toISOString(),
     })
   }
 
@@ -208,9 +225,12 @@ interface ProjectSubmissionData {
 
 // Version correcte de submitProject
 export async function submitProject(projectData: ProjectSubmissionData) {
-  const session = await getSession()
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  if (!session?.user) {
+  if (!user) {
     return { success: false, error: "Authentication required" }
   }
 
@@ -241,35 +261,41 @@ export async function submitProject(projectData: ProjectSubmissionData) {
     const slug = await generateUniqueSlug(name)
 
     // Insérer le projet
-    const [newProject] = await db
-      .insert(projectTable)
-      .values({
+    const { data: newProject, error: insertError } = await supabase
+      .from("projects")
+      .insert({
         id: crypto.randomUUID(),
         name,
         slug,
         description,
-        websiteUrl,
-        logoUrl,
-        productImage: productImage ?? undefined,
-        techStack,
+        website_url: websiteUrl,
+        logo_url: logoUrl,
+        product_image: productImage ?? undefined,
+        tech_stack: techStack,
         platforms,
         pricing,
-        githubUrl: githubUrl ?? undefined,
-        twitterUrl: twitterUrl ?? undefined,
-        sourceUrl: sourceUrl ?? undefined,
-        paperUrl: paperUrl ?? undefined,
-        createdBy: session.user.id,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        github_url: githubUrl ?? undefined,
+        twitter_url: twitterUrl ?? undefined,
+        source_url: sourceUrl ?? undefined,
+        paper_url: paperUrl ?? undefined,
+        created_by: user.id,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       })
-      .returning({ id: projectTable.id, slug: projectTable.slug })
+      .select("id, slug")
+      .single()
+
+    if (insertError) {
+      console.error("Error inserting project:", insertError)
+      return { success: false, error: "Failed to submit project" }
+    }
 
     // Ajouter les catégories
-    if (categories.length > 0) {
-      await db.insert(projectToCategory).values(
+    if (categories.length > 0 && newProject) {
+      await supabase.from("project_to_category").insert(
         categories.map((categoryId) => ({
-          projectId: newProject.id,
-          categoryId,
+          project_id: newProject.id,
+          category_id: categoryId,
         })),
       )
     }
@@ -293,24 +319,31 @@ async function enrichProjectsWithUserData<T extends { id: string }>(
   if (!projects.length) return []
 
   const projectIds = projects.map((p) => p.id)
+  const supabase = await createClient()
 
   // Récupérer les catégories pour tous les projets
-  const categoriesData = await db
-    .select({
-      projectId: projectToCategory.projectId,
-      categoryId: categoryTable.id,
-      categoryName: categoryTable.name,
-    })
-    .from(projectToCategory)
-    .innerJoin(categoryTable, eq(categoryTable.id, projectToCategory.categoryId))
-    .where(sql`${projectToCategory.projectId} IN ${projectIds}`)
+  const { data: projectCategories } = await supabase
+    .from("project_to_category")
+    .select("project_id, category_id, categories(id, name)")
+    .in("project_id", projectIds)
 
-  const categoriesByProjectId = categoriesData.reduce(
-    (acc, row) => {
-      if (!acc[row.projectId]) {
-        acc[row.projectId] = []
+  const categoriesByProjectId = (projectCategories || []).reduce(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (acc: Record<string, { id: string; name: string }[]>, row: any) => {
+      if (!acc[row.project_id]) {
+        acc[row.project_id] = []
       }
-      acc[row.projectId].push({ id: row.categoryId, name: row.categoryName })
+      const cats = row.categories as
+        | { id: string; name: string }
+        | { id: string; name: string }[]
+        | null
+      if (cats) {
+        if (Array.isArray(cats)) {
+          acc[row.project_id].push(...cats)
+        } else {
+          acc[row.project_id].push(cats)
+        }
+      }
       return acc
     },
     {} as Record<string, { id: string; name: string }[]>,
@@ -319,11 +352,15 @@ async function enrichProjectsWithUserData<T extends { id: string }>(
   // Récupérer les upvotes de l'utilisateur
   let userUpvotedProjectIds = new Set<string>()
   if (userId) {
-    const userUpvotes = await db
-      .select({ projectId: upvote.projectId })
-      .from(upvote)
-      .where(and(eq(upvote.userId, userId), sql`${upvote.projectId} IN ${projectIds}`))
-    userUpvotedProjectIds = new Set(userUpvotes.map((uv) => uv.projectId))
+    const { data: userUpvotes } = await supabase
+      .from("upvotes")
+      .select("project_id")
+      .eq("user_id", userId)
+      .in("project_id", projectIds)
+
+    userUpvotedProjectIds = new Set(
+      (userUpvotes || []).map((uv: { project_id: string }) => uv.project_id),
+    )
   }
 
   return projects.map((project) => ({
@@ -340,91 +377,104 @@ export async function getProjectsByCategory(
   limit: number = 10,
   sort: string = "recent",
 ) {
-  const session = await getSession()
-  const userId = session?.user?.id || null
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  let orderByClause
+  const userId = user?.id || null
+  const offset = (page - 1) * limit
+
+  // Get project IDs in this category with ongoing or launched status
+  const { data: categoryProjects } = await supabase
+    .from("project_to_category")
+    .select("project_id")
+    .eq("category_id", categoryId)
+
+  if (!categoryProjects || categoryProjects.length === 0) {
+    return { projects: [], totalCount: 0 }
+  }
+
+  const projectIds = categoryProjects.map((cp) => cp.project_id)
+
+  // Get projects with launch_status filter
+  let query = supabase
+    .from("projects")
+    .select(
+      "id, name, slug, description, logo_url, website_url, launch_status, launch_type, daily_ranking, scheduled_launch_date, created_at",
+    )
+    .in("id", projectIds)
+    .in("launch_status", ["ongoing", "launched"])
+
+  // Apply sorting
   switch (sort) {
-    case "upvotes":
-      orderByClause = desc(sql`count(distinct ${upvote.id})`)
-      break
     case "alphabetical":
-      orderByClause = asc(projectTable.name)
+      query = query.order("name", { ascending: true })
       break
     case "recent":
     default:
-      orderByClause = desc(projectTable.createdAt)
+      query = query.order("created_at", { ascending: false })
       break
   }
 
-  const offset = (page - 1) * limit
+  // Get total count first
+  const { count: totalCount } = await supabase
+    .from("projects")
+    .select("id", { count: "exact", head: true })
+    .in("id", projectIds)
+    .in("launch_status", ["ongoing", "launched"])
 
-  const queryConditions = and(
-    eq(projectToCategory.categoryId, categoryId),
-    or(eq(projectTable.launchStatus, "ongoing"), eq(projectTable.launchStatus, "launched")),
+  // Get paginated projects
+  const { data: projectsData } = await query.range(offset, offset + limit - 1)
+
+  // For upvote sorting, we need to get upvote counts
+  if (sort === "upvotes" && projectsData && projectsData.length > 0) {
+    const projectIdsForSort = projectsData.map((p) => p.id)
+    const { data: upvotes } = await supabase
+      .from("upvotes")
+      .select("project_id")
+      .in("project_id", projectIdsForSort)
+
+    const upvoteCounts = (upvotes || []).reduce(
+      (acc: Record<string, number>, uv: { project_id: string }) => {
+        acc[uv.project_id] = (acc[uv.project_id] || 0) + 1
+        return acc
+      },
+      {} as Record<string, number>,
+    )
+
+    // Sort by upvote count descending
+    projectsData.sort((a, b) => (upvoteCounts[b.id] || 0) - (upvoteCounts[a.id] || 0))
+  }
+
+  // Get upvote counts for all projects
+  const projectsWithUpvotes = await Promise.all(
+    (projectsData || []).map(async (proj) => {
+      const { count } = await supabase
+        .from("upvotes")
+        .select("id", { count: "exact", head: true })
+        .eq("project_id", proj.id)
+      return { ...proj, upvoteCount: count || 0 }
+    }),
   )
 
-  const projectsData = await db
-    .select({
-      id: projectTable.id,
-      name: projectTable.name,
-      slug: projectTable.slug,
-      description: projectTable.description,
-      logoUrl: projectTable.logoUrl,
-      websiteUrl: projectTable.websiteUrl,
-      launchStatus: projectTable.launchStatus,
-      launchType: projectTable.launchType,
-      dailyRanking: projectTable.dailyRanking,
-      scheduledLaunchDate: projectTable.scheduledLaunchDate,
-      createdAt: projectTable.createdAt,
-      upvoteCount: sql<number>`count(distinct ${upvote.id})`.mapWith(Number),
-      commentCount: sql<number>`count(distinct ${fumaComments.id})`.mapWith(Number),
-    })
-    .from(projectTable)
-    .innerJoin(projectToCategory, eq(projectTable.id, projectToCategory.projectId))
-    .leftJoin(upvote, eq(upvote.projectId, projectTable.id))
-    .leftJoin(fumaComments, sql`(${fumaComments.page}::text = ${projectTable.id}::text)`)
-    .where(queryConditions)
-    .groupBy(
-      projectTable.id,
-      projectTable.name,
-      projectTable.slug,
-      projectTable.description,
-      projectTable.logoUrl,
-      projectTable.websiteUrl,
-      projectTable.launchStatus,
-      projectTable.launchType,
-      projectTable.dailyRanking,
-      projectTable.scheduledLaunchDate,
-      projectTable.createdAt,
-    )
-    .orderBy(orderByClause)
-    .limit(limit)
-    .offset(offset)
-
-  const enrichedProjects = await enrichProjectsWithUserData(projectsData, userId)
-
-  const totalProjectsResult = await db
-    .select({ count: count(projectTable.id) })
-    .from(projectTable)
-    .innerJoin(projectToCategory, eq(projectTable.id, projectToCategory.projectId))
-    .where(queryConditions)
-
-  const totalCount = totalProjectsResult[0]?.count || 0
+  const enrichedProjects = await enrichProjectsWithUserData(projectsWithUpvotes, userId)
 
   return {
     projects: enrichedProjects,
-    totalCount,
+    totalCount: totalCount || 0,
   }
 }
 
 // getCategoryById
 export async function getCategoryById(categoryId: string) {
-  const categoryData = await db
-    .select()
-    .from(categoryTable)
-    .where(eq(categoryTable.id, categoryId))
+  const supabase = await createClient()
+  const { data: categoryData } = await supabase
+    .from("categories")
+    .select("*")
+    .eq("id", categoryId)
     .limit(1)
+    .single()
 
-  return categoryData[0] || null
+  return categoryData || null
 }

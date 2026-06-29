@@ -1,7 +1,17 @@
-import { Resend } from "resend"
+import { ServerClient } from "postmark"
 
-// Initialize Resend with API key
-const resend = new Resend(process.env.RESEND_API_KEY)
+// Lazily initialized Postmark client to avoid build-time errors when API key is missing
+let postmark: ServerClient | null = null
+
+function getPostmark(): ServerClient {
+  if (!postmark) {
+    if (!process.env.POSTMARK_API_KEY) {
+      throw new Error("POSTMARK_API_KEY environment variable is not set")
+    }
+    postmark = new ServerClient(process.env.POSTMARK_API_KEY)
+  }
+  return postmark
+}
 
 interface EmailPayload {
   to: string
@@ -10,7 +20,7 @@ interface EmailPayload {
 }
 
 /**
- * Sends an email using Resend
+ * Sends an email using Postmark
  * @param payload - Email configuration object
  * @returns Promise that resolves when email is sent
  */
@@ -18,11 +28,11 @@ export async function sendEmail(payload: EmailPayload) {
   const { to, subject, html } = payload
 
   try {
-    const data = await resend.emails.send({
-      from: "Benchlist <noreply@benchlist.dev>",
-      to,
-      subject,
-      html,
+    const data = await getPostmark().sendEmail({
+      From: "Benchlist <noreply@benchlist.dev>",
+      To: to,
+      Subject: subject,
+      HtmlBody: html,
     })
 
     return { success: true, data }
