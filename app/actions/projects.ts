@@ -429,7 +429,22 @@ export async function getProjectsByCategory(
     .in("launch_status", ["ongoing", "launched"])
 
   // Get paginated projects
-  const { data: projectsData } = await query.range(offset, offset + limit - 1)
+  interface ProjectRow {
+    id: string
+    name: string
+    slug: string
+    description: string
+    logo_url: string
+    website_url: string
+    launch_status: string
+    launch_type: string
+    daily_ranking: number | null
+    scheduled_launch_date: string | null
+    created_at: string
+  }
+  const { data: projectsData } = (await query.range(offset, offset + limit - 1)) as {
+    data: ProjectRow[] | null
+  }
 
   // For upvote sorting, we need to get upvote counts
   if (sort === "upvotes" && projectsData && projectsData.length > 0) {
