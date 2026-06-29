@@ -31,7 +31,7 @@ type TodayProject = {
   daily_ranking?: number | null
   scheduled_launch_date?: string | null
   created_at: string
-  description?: string | null
+  description: string | null
 }
 
 function mapProject<
@@ -46,7 +46,7 @@ function mapProject<
     daily_ranking?: number | null
     scheduled_launch_date?: string | null
     created_at: string
-    description?: string | null
+    description: string | null
   },
 >(p: T) {
   return {
