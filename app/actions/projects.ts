@@ -399,7 +399,7 @@ export async function getProjectsByCategory(
     return { projects: [], totalCount: 0 }
   }
 
-  const projectIds = categoryProjects.map((cp) => cp.project_id)
+  const projectIds = categoryProjects.map((cp: { project_id: string }) => cp.project_id)
 
   // Get projects with launch_status filter
   let query = supabase
