@@ -58,7 +58,7 @@ async function initializeCategories() {
       AI_BENCHMARK_CATEGORIES.map((c) => c.id),
     )
 
-  const existingIds = new Set((existingCategories || []).map((c) => c.id))
+  const existingIds = new Set((existingCategories || []).map((c: { id: string }) => c.id))
   const newCategories = AI_BENCHMARK_CATEGORIES.filter((c) => !existingIds.has(c.id))
 
   if (newCategories.length === 0) {
