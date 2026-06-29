@@ -53,12 +53,28 @@ function calculateReadingTime(content: string): string {
   return `${minutes} min read`
 }
 
+interface BlogArticle {
+  id: string
+  title: string
+  slug: string
+  description: string
+  content: string
+  cover_image_url: string
+  author_name: string
+  author_avatar_url: string
+  published_at: string
+  created_at: string
+}
+
 async function getArticles() {
   const supabase = await createClient()
-  const { data: articles } = await supabase
+  const { data } = await supabase
     .from("blog_articles")
-    .select("*")
+    .select(
+      "id, title, slug, description, content, cover_image_url, author_name, author_avatar_url, published_at, created_at",
+    )
     .order("published_at", { ascending: false })
+  const articles = data as BlogArticle[] | null
 
   if (!articles) return []
 

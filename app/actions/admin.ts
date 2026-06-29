@@ -31,10 +31,22 @@ export async function getAdminStatsAndUsers() {
   await checkAdminAccess()
 
   // Get all users, sorted by registration date descending
-  const { data: usersData, error: usersError } = await supabase
+  const { data: usersData, error: usersError } = (await supabase
     .from("user")
-    .select("*")
-    .order("created_at", { ascending: false })
+    .select("id, email, full_name, avatar_url, created_at, updated_at")
+    .order("created_at", { ascending: false })) as {
+    data:
+      | {
+          id: string
+          email: string
+          full_name: string
+          avatar_url: string
+          created_at: string
+          updated_at: string
+        }[]
+      | null
+    error: unknown
+  }
 
   if (usersError) throw usersError
 
