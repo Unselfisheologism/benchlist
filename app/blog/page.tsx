@@ -59,9 +59,9 @@ interface BlogArticle {
   slug: string
   description: string
   content: string
-  cover_image_url: string
-  author_name: string
-  author_avatar_url: string
+  image: string | null
+  tags: string[] | null
+  author: string | null
   published_at: string
   created_at: string
 }
@@ -70,9 +70,7 @@ async function getArticles() {
   const supabase = await createClient()
   const { data } = await supabase
     .from("blog_articles")
-    .select(
-      "id, title, slug, description, content, cover_image_url, author_name, author_avatar_url, published_at, created_at",
-    )
+    .select("id, title, slug, description, content, image, tags, author, published_at, created_at")
     .order("published_at", { ascending: false })
   const articles = data as BlogArticle[] | null
 
@@ -140,9 +138,9 @@ export default async function BlogPage() {
                 >
                   {/* Article Image */}
                   <div className="bg-muted relative aspect-[16/9] overflow-hidden">
-                    {article.cover_image_url ? (
+                    {article.image ? (
                       <img
-                        src={article.cover_image_url}
+                        src={article.image}
                         alt={article.title}
                         className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-103"
                       />

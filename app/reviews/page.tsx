@@ -50,9 +50,7 @@ interface ReviewArticle {
   slug: string
   description: string
   content: string
-  cover_image_url: string
-  author_name: string
-  author_avatar_url: string
+  image: string | null
   published_at: string
   created_at: string
 }
@@ -61,9 +59,7 @@ async function getReviews() {
   const supabase = await createClient()
   const { data } = await supabase
     .from("seo_articles")
-    .select(
-      "id, title, slug, description, content, cover_image_url, author_name, author_avatar_url, published_at, created_at",
-    )
+    .select("id, title, slug, description, content, image, published_at, created_at")
     .order("published_at", { ascending: true })
   const reviews = data as ReviewArticle[] | null
 
@@ -131,9 +127,9 @@ export default async function ReviewsPage() {
                 >
                   {/* Review Image */}
                   <div className="bg-muted relative aspect-[16/9] overflow-hidden">
-                    {review.cover_image_url ? (
+                    {review.image ? (
                       <img
-                        src={review.cover_image_url}
+                        src={review.image}
                         alt={review.title}
                         className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-103"
                       />
