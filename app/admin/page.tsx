@@ -101,7 +101,7 @@ export default function AdminDashboard() {
       const mappedUsers = users.map((u) => ({
         ...u,
         role: u.role ?? undefined,
-        createdAt: u.createdAt ? new Date(u.createdAt).toISOString() : undefined,
+        createdAt: u.created_at ? new Date(u.created_at).toISOString() : undefined,
       }))
       setUsers(mappedUsers)
       setFilteredUsers(mappedUsers)
