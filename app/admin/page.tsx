@@ -100,6 +100,7 @@ export default function AdminDashboard() {
       ])
       const mappedUsers = users.map((u) => ({
         ...u,
+        name: u.full_name || "",
         role: u.role ?? undefined,
         createdAt: u.created_at ? new Date(u.created_at).toISOString() : undefined,
       }))
