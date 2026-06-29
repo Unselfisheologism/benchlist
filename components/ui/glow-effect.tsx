@@ -125,7 +125,7 @@ export function GlowEffect({
           backfaceVisibility: "hidden",
         } as React.CSSProperties
       }
-      animate={animations[mode]}
+      animate={animations[mode] as React.ComponentProps<typeof motion.div>["animate"]}
       className={cn(
         "pointer-events-none absolute inset-0 h-full w-full",
         "scale-[var(--scale)] transform-gpu",

@@ -1,5 +1,6 @@
 "use client"
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   RiBold,
   RiDoubleQuotesL,
@@ -50,13 +51,13 @@ export function RichTextEditor({
   placeholder = "Start writing...",
   className,
 }: RichTextEditorProps) {
-  const editor = useEditor({
+  const editor: any = useEditor({
     extensions: [
       StarterKit.configure({
         heading: {
           levels: [1, 2],
         },
-      }),
+      }) as unknown as any,
       Placeholder.configure({
         placeholder,
       }),

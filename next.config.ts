@@ -5,6 +5,14 @@ import remarkGfm from "remark-gfm"
 
 const nextConfig: NextConfig = {
   /* config options here */
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "highlight.js/lib/core": require.resolve("highlight.js/lib/core"),
+    }
+    return config
+  },
+  serverExternalPackages: ["lowlight"],
 
   // Configuration pour MDX
   pageExtensions: ["js", "jsx", "md", "mdx", "ts", "tsx"],
