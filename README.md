@@ -29,7 +29,7 @@ Key features:
 - **Database:** PostgreSQL (via Drizzle ORM)
 - **Auth:** Better Auth (GitHub, Google OAuth)
 - **Styling:** Tailwind CSS
-- **Payments:** Stripe
+- **Payments:** Dodo Payments
 - **File Upload:** UploadThing
 - **Hosting:** Vercel
 

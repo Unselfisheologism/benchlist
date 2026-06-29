@@ -14,8 +14,6 @@ import {
   RefreshCw,
   Search,
   Shield,
-  Sparkle,
-  Sparkles,
   Tag,
   Trash2,
   UserCog,
@@ -68,22 +66,14 @@ export default function AdminDashboard() {
   const [statusFilter, setStatusFilter] = useState("all")
   const [stats, setStats] = useState<{
     totalLaunches: number
-    premiumLaunches: number
-    premiumPlusLaunches: number
     totalUsers: number
     newUsersToday: number
     newLaunchesToday: number
-    newPremiumLaunchesToday: number
-    newPremiumPlusLaunchesToday: number
   }>({
     totalLaunches: 0,
-    premiumLaunches: 0,
-    premiumPlusLaunches: 0,
     totalUsers: 0,
     newUsersToday: 0,
     newLaunchesToday: 0,
-    newPremiumLaunchesToday: 0,
-    newPremiumPlusLaunchesToday: 0,
   })
   const [loading, setLoading] = useState(false)
   const [isLoading, setIsLoading] = useState<string | undefined>()
@@ -122,13 +112,9 @@ export default function AdminDashboard() {
       setFilteredUsers([])
       setStats({
         totalLaunches: 0,
-        premiumLaunches: 0,
-        premiumPlusLaunches: 0,
         totalUsers: 0,
         newUsersToday: 0,
         newLaunchesToday: 0,
-        newPremiumLaunchesToday: 0,
-        newPremiumPlusLaunchesToday: 0,
       })
       setFreeLaunchAvailability(null)
     }
@@ -234,32 +220,6 @@ export default function AdminDashboard() {
             <span className="mt-1 block text-xl font-semibold">{stats.totalLaunches}</span>
             {stats.newLaunchesToday > 0 && (
               <span className="text-xs text-blue-500">+{stats.newLaunchesToday} today</span>
-            )}
-          </div>
-        </div>
-        <div className="bg-card rounded-lg border p-3">
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground text-xs">Premium</span>
-            <Sparkle className="text-muted-foreground h-4 w-4" />
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="mt-1 block text-xl font-semibold">{stats.premiumLaunches}</span>
-            {stats.newPremiumLaunchesToday > 0 && (
-              <span className="text-xs text-blue-500">+{stats.newPremiumLaunchesToday} today</span>
-            )}
-          </div>
-        </div>
-        <div className="bg-card rounded-lg border p-3">
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground text-xs">Premium Plus</span>
-            <Sparkles className="text-muted-foreground h-4 w-4" />
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="mt-1 block text-xl font-semibold">{stats.premiumPlusLaunches}</span>
-            {stats.newPremiumPlusLaunchesToday > 0 && (
-              <span className="text-xs text-blue-500">
-                +{stats.newPremiumPlusLaunchesToday} today
-              </span>
             )}
           </div>
         </div>

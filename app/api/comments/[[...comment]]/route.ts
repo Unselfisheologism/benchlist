@@ -6,7 +6,6 @@ import { NextComment } from "@fuma-comment/next"
 import { checkCommentRateLimit } from "@/lib/comment-rate-limit"
 import { commentAuth, commentStorage } from "@/lib/comment.config"
 import { extractTextFromContent } from "@/lib/content-utils"
-import { sendDiscordCommentNotification } from "@/lib/discord-notification"
 
 /**
  * Supprime tous les liens du contenu en transformant les nœuds "link" en texte simple
@@ -82,7 +81,7 @@ const commentHandler = NextComment({
 
 type CommentContext = { params: Promise<{ comment?: string[] }> }
 
-// Intercept POST requests to add Discord notification and rate limiting
+// Intercept POST requests to add rate limiting
 export async function POST(req: NextRequest, context: CommentContext) {
   try {
     // Get parameters and user session
@@ -121,12 +120,6 @@ export async function POST(req: NextRequest, context: CommentContext) {
         // Supprimer les liens du contenu
         if (body && body.content) {
           body.content = removeLinksFromContent(body.content)
-
-          // Extract comment text and send notification
-          const commentText = extractTextFromContent(body.content)
-
-          // Send Discord notification asynchronously
-          void sendDiscordCommentNotification(projectId, session.id || "", commentText)
         }
 
         // Créer une nouvelle requête avec le contenu modifié

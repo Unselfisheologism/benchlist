@@ -54,9 +54,15 @@ export async function getTopCategories(limit = 5) {
     .select("id, launch_status")
     .in("launch_status", ["ongoing", "launched"])
 
-  const projectIds = new Set(projects?.map((p) => p.id) || [])
+  const projects_list = (projects ?? []) as { id: string }[]
+  const projectIds = new Set(projects_list.map((p) => p.id))
 
-  const categoriesWithCount = categories
+  const cats_list = (categories || []) as {
+    id: string
+    name: string
+    project_to_category: { project_id: string }[]
+  }[]
+  const categoriesWithCount = cats_list
     .map((cat) => ({
       id: cat.id,
       name: cat.name,
@@ -89,8 +95,8 @@ export async function getUserUpvotedProjects() {
     .limit(10)
 
   if (!upvotes) return []
-
-  return upvotes.map((uv) => {
+  const upvotes_list = upvotes as { project_id: string; created_at: string; projects: unknown }[]
+  return upvotes_list.map((uv) => {
     const proj = Array.isArray(uv.projects) ? uv.projects[0] : uv.projects
     return {
       project: proj,
@@ -334,9 +340,7 @@ async function enrichProjectsWithUserData<T extends { id: string }>(
         acc[row.project_id] = []
       }
       const cats = row.categories as
-        | { id: string; name: string }
-        | { id: string; name: string }[]
-        | null
+        { id: string; name: string } | { id: string; name: string }[] | null
       if (cats) {
         if (Array.isArray(cats)) {
           acc[row.project_id].push(...cats)

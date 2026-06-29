@@ -4,8 +4,6 @@ import { createClient } from "@/lib/supabase/server"
 
 // Constantes pour les statuts de lancement
 const launchStatus = {
-  PAYMENT_PENDING: "payment_pending",
-  PAYMENT_FAILED: "payment_failed",
   SCHEDULED: "scheduled",
   ONGOING: "ongoing",
   LAUNCHED: "launched",
@@ -36,7 +34,6 @@ export async function getProjectBySlug(slug: string): Promise<ProjectBySlugResul
     .from("projects")
     .select("*")
     .eq("slug", slug)
-    .neq("launch_status", launchStatus.PAYMENT_PENDING)
     .limit(1)
     .single()
 
@@ -70,8 +67,7 @@ export async function getProjectBySlug(slug: string): Promise<ProjectBySlugResul
     .eq("project_id", projectData.id)
 
   const categories = rawCategories as
-    | { categories: { id: string; name: string } | { id: string; name: string }[] }[]
-    | null
+    { categories: { id: string; name: string } | { id: string; name: string }[] }[] | null
 
   const formattedCategories = (categories || [])
     .map((pc) => {

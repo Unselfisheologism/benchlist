@@ -29,15 +29,6 @@ export async function GET(request: Request) {
       return NextResponse.json({ exists: false })
     }
 
-    // If a project exists but is in PAYMENT_PENDING or PAYMENT_FAILED,
-    // we consider the URL as available to allow re-submission
-    if (
-      existingProject.launch_status === "payment_pending" ||
-      existingProject.launch_status === "payment_failed"
-    ) {
-      return NextResponse.json({ exists: false })
-    }
-
     // In all other cases, the URL is considered taken
     return NextResponse.json({ exists: true })
   } catch (error) {

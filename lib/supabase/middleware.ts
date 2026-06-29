@@ -7,10 +7,10 @@ export async function updateSession(request: NextRequest) {
     request,
   })
 
-  // Skip during build when env vars are not fully configured
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ""
-  if (!supabaseUrl || !supabaseKey) {
+  // During build (env vars not yet injected on Cloudflare), skip auth
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!supabaseUrl || !supabaseKey || supabaseUrl === "undefined" || supabaseKey === "undefined") {
     return supabaseResponse
   }
 

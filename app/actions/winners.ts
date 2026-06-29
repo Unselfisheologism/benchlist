@@ -3,8 +3,6 @@
 import { createClient } from "@/lib/supabase/server"
 
 const launchStatus = {
-  PAYMENT_PENDING: "payment_pending",
-  PAYMENT_FAILED: "payment_failed",
   SCHEDULED: "scheduled",
   ONGOING: "ongoing",
   LAUNCHED: "launched",

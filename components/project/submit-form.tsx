@@ -11,18 +11,15 @@ import {
   RiCheckLine,
   RiCloseCircleLine,
   RiFileCheckLine,
-  RiImageAddLine,
   RiInformationLine,
   RiLink,
   RiLoader4Line,
 } from "@remixicon/react"
 
-import { UploadButton } from "@/lib/uploadthing"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RichTextEditor } from "@/components/ui/rich-text-editor"
-// Select components removed — not needed for benchmark form
 import { getAllCategories, submitProject } from "@/app/actions/projects"
 
 interface BenchmarkFormData {
@@ -54,8 +51,7 @@ export function SubmitProjectForm() {
     productImage: null,
   })
 
-  const [uploadedLogoUrl, setUploadedLogoUrl] = useState<string | null>(null)
-  const [isUploadingLogo, setIsUploadingLogo] = useState(false)
+  const [logoUrlInput, setLogoUrlInput] = useState("")
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([])
   const [isLoadingCategories, setIsLoadingCategories] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -91,14 +87,15 @@ export function SubmitProjectForm() {
         setError("Please fill in all required fields.")
         return
       }
-      if (!uploadedLogoUrl) {
-        setError("Please upload a logo.")
+      if (!logoUrlInput) {
+        setError("Please enter a logo URL.")
         return
       }
       try {
         new URL(formData.websiteUrl)
+        new URL(logoUrlInput)
       } catch {
-        setError("Please enter a valid website URL.")
+        setError("Please enter valid URLs.")
         return
       }
     }
@@ -124,9 +121,9 @@ export function SubmitProjectForm() {
 
     try {
       const finalLogoUrl =
-        process.env.NODE_ENV === "development" && !uploadedLogoUrl
+        process.env.NODE_ENV === "development" && !logoUrlInput
           ? "https://placehold.co/128x128/E2E8F0/718096?text=B"
-          : uploadedLogoUrl!
+          : logoUrlInput
 
       const projectData = {
         name: formData.name,
@@ -257,15 +254,22 @@ export function SubmitProjectForm() {
             </div>
             <div className="space-y-2">
               <Label>
-                Logo <span className="text-red-500">*</span>
+                Logo URL <span className="text-red-500">*</span>
               </Label>
               <p className="text-muted-foreground text-xs">
-                Recommended: 1:1 square image (e.g., 256x256px).
+                Paste a URL to a square image (e.g., 256x256px).
               </p>
-              {uploadedLogoUrl ? (
+              <Input
+                id="logoUrl"
+                type="url"
+                value={logoUrlInput}
+                onChange={(e) => setLogoUrlInput(e.target.value)}
+                placeholder="https://example.com/logo.png"
+              />
+              {logoUrlInput && (
                 <div className="bg-muted/30 relative w-fit rounded-md border p-3">
                   <Image
-                    src={uploadedLogoUrl}
+                    src={logoUrlInput}
                     alt="Logo preview"
                     width={64}
                     height={64}
@@ -276,43 +280,10 @@ export function SubmitProjectForm() {
                     variant="ghost"
                     size="icon"
                     className="text-muted-foreground hover:text-foreground absolute top-1 right-1 h-6 w-6"
-                    onClick={() => setUploadedLogoUrl(null)}
+                    onClick={() => setLogoUrlInput("")}
                   >
                     <RiCloseCircleLine className="h-5 w-5" />
                   </Button>
-                </div>
-              ) : (
-                <div className="mt-2 flex items-center gap-2">
-                  <UploadButton
-                    endpoint="projectLogo"
-                    onUploadBegin={() => setIsUploadingLogo(true)}
-                    onClientUploadComplete={(res) => {
-                      setIsUploadingLogo(false)
-                      if (res?.[0]?.serverData?.fileUrl) {
-                        setUploadedLogoUrl(res[0].serverData.fileUrl)
-                      }
-                    }}
-                    onUploadError={(err) => {
-                      setIsUploadingLogo(false)
-                      setError(`Logo upload failed: ${err.message}`)
-                    }}
-                    appearance={{
-                      button: `ut-button border border-input bg-background hover:bg-accent hover:text-accent-foreground text-sm h-9 px-3 inline-flex items-center justify-center gap-2 ${isUploadingLogo ? "opacity-50 pointer-events-none" : ""}`,
-                      allowedContent: "hidden",
-                    }}
-                    content={{
-                      button({ ready, isUploading }) {
-                        if (isUploading) return <RiLoader4Line className="h-4 w-4 animate-spin" />
-                        if (ready)
-                          return (
-                            <>
-                              <RiImageAddLine className="h-4 w-4" /> Upload Logo
-                            </>
-                          )
-                        return "Getting ready..."
-                      },
-                    }}
-                  />
                 </div>
               )}
             </div>
@@ -436,9 +407,9 @@ export function SubmitProjectForm() {
             <h3 className="text-lg font-medium">Review & Submit</h3>
             <div className="bench-card space-y-4 p-4">
               <div className="flex items-start gap-4">
-                {uploadedLogoUrl && (
+                {logoUrlInput && (
                   <Image
-                    src={uploadedLogoUrl}
+                    src={logoUrlInput}
                     alt="Logo"
                     width={48}
                     height={48}
@@ -501,7 +472,7 @@ export function SubmitProjectForm() {
                 )}
                 {formData.repoUrl && (
                   <div>
-                    <span className="text-muted-foreground">Source code:</span>{" "}
+                    <span className="text-muted-foreground">Source Code:</span>{" "}
                     <a
                       href={formData.repoUrl}
                       target="_blank"
@@ -512,67 +483,56 @@ export function SubmitProjectForm() {
                     </a>
                   </div>
                 )}
+                {formData.twitterUrl && (
+                  <div>
+                    <span className="text-muted-foreground">Twitter:</span>{" "}
+                    <a
+                      href={formData.twitterUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      {formData.twitterUrl}
+                    </a>
+                  </div>
+                )}
               </div>
-            </div>
-
-            <div className="bg-muted/30 border-muted flex items-start gap-2 rounded-lg border p-3">
-              <RiInformationLine className="text-primary mt-0.5 h-5 w-5 flex-shrink-0" />
-              <p className="text-xs sm:text-sm">
-                Your benchmark will appear in the directory immediately. If you provided a data
-                source URL, Benchlist will auto-fetch and update scores regularly.
-              </p>
             </div>
           </div>
         )
-      default:
-        return null
     }
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
-      <div className="mb-8">
-        <h1 className="font-heading text-2xl font-bold sm:text-3xl">Submit a Benchmark</h1>
-        <p className="text-muted-foreground mt-2 text-sm">
-          Add an AI benchmark to the Benchlist directory. It will be reviewed and go live shortly.
-        </p>
-      </div>
-
+    <div className="container mx-auto max-w-3xl px-4 py-8">
       {renderStepper()}
-
-      <div className="space-y-6">
-        {renderStepContent()}
-
-        {error && (
-          <div className="bg-destructive/10 text-destructive rounded-md px-4 py-3 text-sm">
-            {error}
-          </div>
+      <div className="space-y-6">{renderStepContent()}</div>
+      {error && <p className="text-sm text-red-500">{error}</p>}
+      <div className="mt-8 flex items-center justify-between">
+        {currentStep > 1 ? (
+          <Button variant="outline" onClick={prevStep}>
+            <RiArrowLeftLine className="mr-1 h-4 w-4" /> Back
+          </Button>
+        ) : (
+          <div />
         )}
-
-        <div className="flex justify-between pt-4">
-          {currentStep > 1 ? (
-            <Button variant="outline" onClick={prevStep}>
-              <RiArrowLeftLine className="mr-1 h-4 w-4" /> Back
-            </Button>
-          ) : (
-            <div />
-          )}
-
-          {currentStep < 3 ? (
-            <Button onClick={nextStep}>
-              Next <RiArrowRightLine className="ml-1 h-4 w-4" />
-            </Button>
-          ) : (
-            <Button onClick={handleFinalSubmit} disabled={isPending}>
-              {isPending ? (
-                <RiLoader4Line className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <RiCheckboxCircleFill className="mr-2 h-4 w-4" />
-              )}
-              Submit Benchmark
-            </Button>
-          )}
-        </div>
+        {currentStep < 3 ? (
+          <Button onClick={nextStep}>
+            Next <RiArrowRightLine className="ml-1 h-4 w-4" />
+          </Button>
+        ) : (
+          <Button onClick={handleFinalSubmit} disabled={isPending}>
+            {isPending ? (
+              <>
+                <RiLoader4Line className="mr-2 h-4 w-4 animate-spin" /> Submitting...
+              </>
+            ) : (
+              <>
+                <RiCheckboxCircleFill className="mr-2 h-4 w-4" /> Submit Benchmark
+              </>
+            )}
+          </Button>
+        )}
       </div>
     </div>
   )

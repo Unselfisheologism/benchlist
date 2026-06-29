@@ -6,8 +6,6 @@ import { PROJECT_LIMITS_VARIABLES } from "@/lib/constants"
 import { createClient } from "@/lib/supabase/server"
 
 const launchStatus = {
-  PAYMENT_PENDING: "payment_pending",
-  PAYMENT_FAILED: "payment_failed",
   SCHEDULED: "scheduled",
   ONGOING: "ongoing",
   LAUNCHED: "launched",
@@ -15,8 +13,6 @@ const launchStatus = {
 
 const launchType = {
   FREE: "free",
-  PREMIUM: "premium",
-  PREMIUM_PLUS: "premium_plus",
 } as const
 
 async function getCurrentUserId() {
@@ -28,6 +24,20 @@ async function getCurrentUserId() {
 }
 
 // Maps a project row from Supabase (snake_case) to camelCase for UI consumption
+type TodayProject = {
+  id: string
+  slug: string
+  name: string
+  logo_url: string
+  website_url?: string | null
+  launch_status: string
+  launch_type?: string | null
+  daily_ranking?: number | null
+  scheduled_launch_date?: string | null
+  created_at: string
+  description?: string | null
+}
+
 function mapProject<
   T extends {
     id: string
@@ -87,9 +97,7 @@ async function enrichProjectsWithUserData<T extends { id: string }>(
       categoriesByProjectId[row.project_id] = []
     }
     const cats = row.categories as
-      | { id: string; name: string }
-      | { id: string; name: string }[]
-      | null
+      { id: string; name: string } | { id: string; name: string }[] | null
     if (cats) {
       if (Array.isArray(cats)) {
         categoriesByProjectId[row.project_id].push(...cats)
@@ -130,10 +138,11 @@ export async function getTodayProjects(limit: number = PROJECT_LIMITS_VARIABLES.
     )
     .eq("launch_status", launchStatus.ONGOING)
     .order("created_at", { ascending: false })
+  const projects_today = (todayProjects ?? []) as unknown as TodayProject[]
 
   if (!todayProjects) return []
 
-  const projectIds = todayProjects.map((p) => p.id)
+  const projectIds = projects_today.map((p) => p.id)
   const { data: upvotes } = await supabase
     .from("upvotes")
     .select("project_id")
@@ -144,8 +153,13 @@ export async function getTodayProjects(limit: number = PROJECT_LIMITS_VARIABLES.
     upvoteCounts[uv.project_id] = (upvoteCounts[uv.project_id] || 0) + 1
   }
 
-  const sortedProjects = todayProjects
-    .map((p) => mapProject({ ...p, upvoteCount: upvoteCounts[p.id] || 0 }))
+  const sortedProjects = projects_today
+    .map((p) => {
+      const x = { ...p, upvoteCount: upvoteCounts[p.id] || 0 } as TodayProject & {
+        upvoteCount: number
+      }
+      return mapProject(x)
+    })
     .sort((a, b) => b.upvoteCount - a.upvoteCount)
     .slice(0, limit)
 
@@ -180,8 +194,8 @@ export async function getYesterdayProjects(
     .lt("scheduled_launch_date", yesterdayEnd.toISOString())
 
   if (!yesterdayProjects) return []
-
-  const projectIds = yesterdayProjects.map((p) => p.id)
+  const pj_yesterday = (yesterdayProjects ?? []) as unknown as TodayProject[]
+  const projectIds = pj_yesterday.map((p) => p.id)
   const { data: upvotes } = await supabase
     .from("upvotes")
     .select("project_id")
@@ -192,7 +206,7 @@ export async function getYesterdayProjects(
     upvoteCounts[uv.project_id] = (upvoteCounts[uv.project_id] || 0) + 1
   }
 
-  const sortedProjects = yesterdayProjects
+  const sortedProjects = pj_yesterday
     .map((p) => mapProject({ ...p, upvoteCount: upvoteCounts[p.id] || 0 }))
     .sort((a, b) => b.upvoteCount - a.upvoteCount)
     .slice(0, limit)
@@ -218,8 +232,8 @@ export async function getMonthBestProjects(limit: number = PROJECT_LIMITS_VARIAB
     .lte("scheduled_launch_date", monthEnd.toISOString())
 
   if (!monthProjects) return []
-
-  const projectIds = monthProjects.map((p) => p.id)
+  const pj_month = (monthProjects ?? []) as unknown as TodayProject[]
+  const projectIds = pj_month.map((p) => p.id)
   const { data: upvotes } = await supabase
     .from("upvotes")
     .select("project_id")
@@ -230,29 +244,12 @@ export async function getMonthBestProjects(limit: number = PROJECT_LIMITS_VARIAB
     upvoteCounts[uv.project_id] = (upvoteCounts[uv.project_id] || 0) + 1
   }
 
-  const sortedProjects = monthProjects
+  const sortedProjects = pj_month
     .map((p) => mapProject({ ...p, upvoteCount: upvoteCounts[p.id] || 0 }))
     .sort((a, b) => b.upvoteCount - a.upvoteCount)
     .slice(0, limit)
 
   return enrichProjectsWithUserData(sortedProjects, userId)
-}
-
-export async function getFeaturedPremiumProjects() {
-  const supabase = await createClient()
-
-  const { data: projects } = await supabase
-    .from("projects")
-    .select(
-      "id, name, slug, description, logo_url, website_url, launch_status, launch_type, daily_ranking, created_at",
-    )
-    .eq("featured_on_homepage", true)
-    .eq("launch_type", launchType.PREMIUM_PLUS)
-    .eq("launch_status", launchStatus.ONGOING)
-    .order("created_at", { ascending: false })
-    .limit(3)
-
-  return (projects || []).map((p) => mapProject(p as never))
 }
 
 export async function getYesterdayTopProjects() {
@@ -274,7 +271,7 @@ export async function getYesterdayTopProjects() {
     .order("daily_ranking", { ascending: true })
     .limit(3)
 
-  return (topProjects || []).map((p) => mapProject(p as never))
+  return ((topProjects as TodayProject[]) || []).map((p) => mapProject(p))
 }
 
 export async function getWinnersByDate(date: Date) {
@@ -299,8 +296,8 @@ export async function getWinnersByDate(date: Date) {
     .order("daily_ranking", { ascending: true })
 
   if (!winnersBase) return []
-
-  const projectIds = winnersBase.map((p) => p.id)
+  const pj_winners = (winnersBase ?? []) as unknown as TodayProject[]
+  const projectIds = pj_winners.map((p) => p.id)
   const { data: upvotes } = await supabase
     .from("upvotes")
     .select("project_id")
@@ -311,7 +308,7 @@ export async function getWinnersByDate(date: Date) {
     upvoteCounts[uv.project_id] = (upvoteCounts[uv.project_id] || 0) + 1
   }
 
-  const winnersWithCounts = winnersBase.map((p) =>
+  const winnersWithCounts = pj_winners.map((p) =>
     mapProject({ ...p, upvoteCount: upvoteCounts[p.id] || 0 }),
   )
 

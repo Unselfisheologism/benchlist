@@ -9,7 +9,6 @@ import {
   DATE_FORMAT,
   LAUNCH_LIMITS,
   LAUNCH_SETTINGS,
-  LAUNCH_TYPES,
   USER_DAILY_LAUNCH_LIMIT,
 } from "@/lib/constants"
 
@@ -22,29 +21,23 @@ const getAdminClient = () =>
 export interface LaunchAvailability {
   date: string
   freeSlots: number
-  premiumSlots: number
-  premiumPlusSlots: number
   totalSlots: number
 }
 
-// Launch status and type constants matching DB values
+// Launch status constants matching DB values
 const LAUNCH_STATUS = {
-  PAYMENT_PENDING: "payment_pending",
-  PAYMENT_FAILED: "payment_failed",
   SCHEDULED: "scheduled",
   ONGOING: "ongoing",
   LAUNCHED: "launched",
 } as const
 
-// Fonction pour obtenir la disponibilité des lancements pour une date spécifique
+// Get launch availability for a specific date
 export async function getLaunchAvailability(date: string): Promise<LaunchAvailability> {
   const supabase = getAdminClient()
 
-  // Vérifier si la date est au format correct
   const parsedDate = parse(date, DATE_FORMAT.API, new Date())
   const formattedDate = format(parsedDate, DATE_FORMAT.API)
 
-  // Obtenir le nombre de lancements déjà programmés pour cette date
   const startOfDay = new Date(parsedDate)
   startOfDay.setUTCHours(0, 0, 0, 0)
   const endOfDay = addDays(startOfDay, 1)
@@ -57,49 +50,32 @@ export async function getLaunchAvailability(date: string): Promise<LaunchAvailab
     .eq("launch_status", LAUNCH_STATUS.SCHEDULED)
 
   let freeCount = 0
-  let premiumCount = 0
-  let premiumPlusCount = 0
   let totalCount = 0
 
   for (const p of scheduledLaunches ?? []) {
     const lt = p.launch_type as string
     totalCount++
-    if (lt === LAUNCH_TYPES.FREE) freeCount++
-    else if (lt === LAUNCH_TYPES.PREMIUM) premiumCount++
-    else if (lt === LAUNCH_TYPES.PREMIUM_PLUS) premiumPlusCount++
+    if (lt === "free") freeCount++
   }
 
   const freeSlots = Math.max(0, LAUNCH_LIMITS.FREE_DAILY_LIMIT - freeCount)
-  const premiumSlots = Math.max(0, LAUNCH_LIMITS.PREMIUM_DAILY_LIMIT - premiumCount)
-  const premiumPlusSlots = Math.max(0, LAUNCH_LIMITS.PREMIUM_PLUS_DAILY_LIMIT - premiumPlusCount)
   const totalSlots = Math.max(0, LAUNCH_LIMITS.TOTAL_DAILY_LIMIT - totalCount)
 
   return {
     date: formattedDate,
     freeSlots,
-    premiumSlots,
-    premiumPlusSlots,
     totalSlots,
   }
 }
 
-// Fonction pour obtenir la disponibilité des lancements pour une plage de dates
+// Get launch availability for a date range
 export async function getLaunchAvailabilityRange(
   startDate: string,
   endDate: string,
-  launchTypeValue: (typeof LAUNCH_TYPES)[keyof typeof LAUNCH_TYPES] = LAUNCH_TYPES.FREE,
 ): Promise<LaunchAvailability[]> {
   const today = new Date()
-  let minDaysAhead = LAUNCH_SETTINGS.MIN_DAYS_AHEAD
-  let maxDaysAhead: number = LAUNCH_SETTINGS.MAX_DAYS_AHEAD
-
-  if (launchTypeValue === LAUNCH_TYPES.PREMIUM) {
-    minDaysAhead = LAUNCH_SETTINGS.PREMIUM_MIN_DAYS_AHEAD
-    maxDaysAhead = LAUNCH_SETTINGS.PREMIUM_MAX_DAYS_AHEAD
-  } else if (launchTypeValue === LAUNCH_TYPES.PREMIUM_PLUS) {
-    minDaysAhead = LAUNCH_SETTINGS.PREMIUM_PLUS_MIN_DAYS_AHEAD
-    maxDaysAhead = LAUNCH_SETTINGS.PREMIUM_PLUS_MAX_DAYS_AHEAD
-  }
+  const minDaysAhead = LAUNCH_SETTINGS.MIN_DAYS_AHEAD
+  const maxDaysAhead: number = LAUNCH_SETTINGS.MAX_DAYS_AHEAD
 
   const minDate = addDays(today, minDaysAhead)
   const maxDate = addDays(today, maxDaysAhead)
@@ -120,12 +96,10 @@ export async function getLaunchAvailabilityRange(
   const availabilityPromises = dates.map((date) =>
     getLaunchAvailability(format(date, DATE_FORMAT.API)),
   )
-  const availabilityResults = await Promise.all(availabilityPromises)
-
-  return availabilityResults
+  return Promise.all(availabilityPromises)
 }
 
-// vérifier la limite de lancement de l'utilisateur
+// Check user daily launch limit
 export async function checkUserLaunchLimit(
   userId: string,
   launchDate: string,
@@ -142,8 +116,6 @@ export async function checkUserLaunchLimit(
     .eq("created_by", userId)
     .gte("scheduled_launch_date", dateStart.toISOString())
     .lt("scheduled_launch_date", nextDayStart.toISOString())
-    .not("launch_status", "eq", LAUNCH_STATUS.PAYMENT_FAILED)
-    .not("launch_status", "eq", LAUNCH_STATUS.PAYMENT_PENDING)
 
   const currentCount = rows?.length ?? 0
   const limit = USER_DAILY_LAUNCH_LIMIT
@@ -152,11 +124,10 @@ export async function checkUserLaunchLimit(
   return { allowed, count: currentCount, limit }
 }
 
-// Fonction pour planifier un lancement
+// Schedule a launch
 export async function scheduleLaunch(
   projectId: string,
   date: string,
-  launchTypeValue: (typeof LAUNCH_TYPES)[keyof typeof LAUNCH_TYPES],
   userId: string | undefined,
 ): Promise<boolean> {
   const supabase = getAdminClient()
@@ -170,31 +141,21 @@ export async function scheduleLaunch(
 
     try {
       parsedDate = parse(date, DATE_FORMAT.API, new Date())
-
       if (isNaN(parsedDate.getTime())) {
-        throw new Error("Date invalide après parsing")
+        throw new Error("Invalid date after parsing")
       }
     } catch {
       parsedDate = new Date(date)
-
       if (isNaN(parsedDate.getTime())) {
-        throw new Error(`Format de date invalide: ${date}`)
+        throw new Error(`Invalid date format: ${date}`)
       }
     }
 
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
-    let minDaysAhead = LAUNCH_SETTINGS.MIN_DAYS_AHEAD
-    let maxDaysAhead: number = LAUNCH_SETTINGS.MAX_DAYS_AHEAD
-
-    if (launchTypeValue === LAUNCH_TYPES.PREMIUM) {
-      minDaysAhead = LAUNCH_SETTINGS.PREMIUM_MIN_DAYS_AHEAD
-      maxDaysAhead = LAUNCH_SETTINGS.PREMIUM_MAX_DAYS_AHEAD
-    } else if (launchTypeValue === LAUNCH_TYPES.PREMIUM_PLUS) {
-      minDaysAhead = LAUNCH_SETTINGS.PREMIUM_PLUS_MIN_DAYS_AHEAD
-      maxDaysAhead = LAUNCH_SETTINGS.PREMIUM_PLUS_MAX_DAYS_AHEAD
-    }
+    const minDaysAhead = LAUNCH_SETTINGS.MIN_DAYS_AHEAD
+    const maxDaysAhead: number = LAUNCH_SETTINGS.MAX_DAYS_AHEAD
 
     const minDate = addDays(today, minDaysAhead)
     const maxDate = addDays(today, maxDaysAhead)
@@ -203,16 +164,14 @@ export async function scheduleLaunch(
     normalizedParsedDate.setHours(0, 0, 0, 0)
 
     if (normalizedParsedDate < minDate) {
-      throw new Error(`La date de lancement doit être au moins ${minDaysAhead} jour(s) à l'avance`)
+      throw new Error(`Launch date must be at least ${minDaysAhead} day(s) ahead`)
     }
 
     if (normalizedParsedDate > maxDate) {
-      throw new Error(
-        `La date de lancement ne peut pas être plus de ${maxDaysAhead} jours à l'avance pour ce type de lancement`,
-      )
+      throw new Error(`Launch date cannot be more than ${maxDaysAhead} days ahead`)
     }
 
-    // Vérifier la limite de lancement de l'utilisateur AVANT de vérifier les slots globaux
+    // Check user daily limit
     const userLaunchLimitCheck = await checkUserLaunchLimit(
       userId,
       format(parsedDate, DATE_FORMAT.API),
@@ -223,23 +182,13 @@ export async function scheduleLaunch(
       )
     }
 
-    // Vérifier la disponibilité globale des slots
+    // Check global availability
     const availability = await getLaunchAvailability(format(parsedDate, DATE_FORMAT.API))
-    let hasAvailability = false
-
-    if (launchTypeValue === LAUNCH_TYPES.FREE) {
-      hasAvailability = availability.freeSlots > 0
-    } else if (launchTypeValue === LAUNCH_TYPES.PREMIUM) {
-      hasAvailability = availability.premiumSlots > 0
-    } else if (launchTypeValue === LAUNCH_TYPES.PREMIUM_PLUS) {
-      hasAvailability = availability.premiumPlusSlots > 0
+    if (availability.freeSlots <= 0) {
+      throw new Error("No availability for the selected date")
     }
 
-    if (!hasAvailability) {
-      throw new Error("No availability for the selected date and launch type")
-    }
-
-    // CORRECTION: Créer une date UTC correcte pour le jour sélectionné à 8h UTC
+    // Create UTC date for the selected day at launch hour
     const year = parsedDate.getFullYear()
     const month = parsedDate.getMonth()
     const day = parsedDate.getDate()
@@ -248,21 +197,13 @@ export async function scheduleLaunch(
       Date.UTC(year, month, day, LAUNCH_SETTINGS.LAUNCH_HOUR_UTC, 0, 0, 0),
     )
 
-    // Déterminer le statut initial en fonction du type de lancement
-    let initialStatus: string = LAUNCH_STATUS.SCHEDULED
-
-    if (launchTypeValue === LAUNCH_TYPES.PREMIUM || launchTypeValue === LAUNCH_TYPES.PREMIUM_PLUS) {
-      initialStatus = LAUNCH_STATUS.PAYMENT_PENDING
-    }
-
-    // Mettre à jour le projet avec la date de lancement et le type
+    // Update project
     const { error: updateError } = await supabase
       .from("project")
       .update({
         scheduled_launch_date: launchDate.toISOString(),
-        launch_type: launchTypeValue,
-        launch_status: initialStatus,
-        featured_on_homepage: launchTypeValue === LAUNCH_TYPES.PREMIUM_PLUS,
+        launch_type: "free",
+        launch_status: LAUNCH_STATUS.SCHEDULED,
         updated_at: new Date().toISOString(),
       })
       .eq("id", projectId)
@@ -271,37 +212,30 @@ export async function scheduleLaunch(
       throw new Error("Failed to update project schedule")
     }
 
-    // Ne mettre à jour les quotas que pour les lancements gratuits
-    if (launchTypeValue === LAUNCH_TYPES.FREE) {
-      // Mettre à jour ou créer le quota pour cette date
-      const { data: quotaResult } = await supabase
-        .from("launch_quota")
-        .select("id, free_count")
-        .eq("date", launchDate.toISOString())
-        .limit(1)
+    // Update launch quota for free launches
+    const { data: quotaResult } = await supabase
+      .from("launch_quota")
+      .select("id, free_count")
+      .eq("date", launchDate.toISOString())
+      .limit(1)
 
-      if (!quotaResult || quotaResult.length === 0) {
-        // Créer un nouveau quota
-        await supabase.from("launch_quota").insert({
-          id: crypto.randomUUID(),
-          date: launchDate.toISOString(),
-          free_count: 1,
-          premium_count: 0,
-          premium_plus_count: 0,
+    if (!quotaResult || quotaResult.length === 0) {
+      await supabase.from("launch_quota").insert({
+        id: crypto.randomUUID(),
+        date: launchDate.toISOString(),
+        free_count: 1,
+      })
+    } else {
+      await supabase
+        .from("launch_quota")
+        .update({
+          free_count: (quotaResult[0].free_count ?? 0) + 1,
+          updated_at: new Date().toISOString(),
         })
-      } else {
-        // Mettre à jour le quota existant
-        await supabase
-          .from("launch_quota")
-          .update({
-            free_count: (quotaResult[0].free_count ?? 0) + 1,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", quotaResult[0].id)
-      }
+        .eq("id", quotaResult[0].id)
     }
 
-    // Revalider les chemins
+    // Revalidate paths
     revalidatePath("/")
     revalidatePath("/dashboard")
     revalidatePath(`/projects/${projectId}`)
@@ -313,7 +247,7 @@ export async function scheduleLaunch(
   }
 }
 
-// Mettre à jour le statut des chaînes dont la date de lancement est aujourd'hui
+// Update projects with today's launch date to ONGOING
 export async function updateProjectStatusToOngoing() {
   const supabase = getAdminClient()
   const todayStart = new Date()
@@ -334,7 +268,7 @@ export async function updateProjectStatusToOngoing() {
   return { success: true, updatedCount: count ?? 0 }
 }
 
-// Mettre à jour le statut des chaînes dont la date de lancement était hier
+// Update projects launched yesterday to LAUNCHED
 export async function updateProjectStatusToLaunched() {
   const supabase = getAdminClient()
   const today = new Date()

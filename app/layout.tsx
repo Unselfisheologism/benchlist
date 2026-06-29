@@ -1,7 +1,6 @@
 import type { Metadata } from "next"
 import { Space_Grotesk as FontHeading, Inter as FontSans } from "next/font/google"
 
-import PlausibleProvider from "next-plausible"
 import { Toaster } from "sonner"
 
 import Footer from "@/components/layout/footer"
@@ -58,18 +57,6 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
-        <PlausibleProvider
-          domain="benchlist.dev"
-          customDomain="https://plausible.dailypings.com"
-          selfHosted={true}
-          trackOutboundLinks={true}
-          scriptProps={{
-            src: "https://plausible.dailypings.com/js/script.js",
-          }}
-          enabled={process.env.NODE_ENV === "production"}
-        />
-      </head>
       <body
         className={`font-sans antialiased ${fontSans.variable} ${fontHeading.variable} sm:overflow-y-scroll`}
         suppressHydrationWarning

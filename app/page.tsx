@@ -5,7 +5,6 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { ProjectSection } from "@/components/home/project-section"
 import { getMonthBestProjects, getTodayProjects, getYesterdayProjects } from "@/app/actions/home"
-import { getLast30DaysPageviews, getLast30DaysVisitors } from "@/app/actions/plausible"
 import { getTopCategories } from "@/app/actions/projects"
 
 export default async function Home() {
@@ -13,9 +12,6 @@ export default async function Home() {
   const yesterdayProjects = await getYesterdayProjects()
   const monthProjects = await getMonthBestProjects()
   const topCategories = await getTopCategories(8)
-
-  const last30DaysVisitors = await getLast30DaysVisitors()
-  const last30DaysPageviews = await getLast30DaysPageviews()
 
   const supabase = await createClient()
   const {
@@ -95,27 +91,6 @@ export default async function Home() {
 
           {/* Sidebar */}
           <div className="top-24 space-y-6">
-            {/* Quick Stats */}
-            {(last30DaysVisitors !== null || last30DaysPageviews !== null) && (
-              <div className="space-y-3">
-                <h3 className="font-semibold">Directory Stats</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  {last30DaysVisitors !== null && (
-                    <div className="bench-card p-3 text-center">
-                      <div className="text-xl font-bold">{last30DaysVisitors}</div>
-                      <div className="text-muted-foreground text-xs">Visitors (30d)</div>
-                    </div>
-                  )}
-                  {last30DaysPageviews !== null && (
-                    <div className="bench-card p-3 text-center">
-                      <div className="text-xl font-bold">{last30DaysPageviews}</div>
-                      <div className="text-muted-foreground text-xs">Page Views (30d)</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
             {/* Categories */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">

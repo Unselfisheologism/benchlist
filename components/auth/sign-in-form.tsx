@@ -15,7 +15,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 
 import { Input } from "../ui/input"
 import { Label } from "../ui/label"
-import { TurnstileCaptcha } from "./turnstile-captcha"
 
 export function SignInForm() {
   const router = useRouter()
@@ -24,7 +23,6 @@ export function SignInForm() {
     email: false,
     github: false,
   })
-  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
 
   const {
     register,
@@ -52,11 +50,6 @@ export function SignInForm() {
   }
 
   const handleLoginEmail = async (data: SignInFormData) => {
-    if (!turnstileToken) {
-      setGeneralError("Please complete the security verification")
-      return
-    }
-
     try {
       setLoadingButtons((prevState) => ({ ...prevState, email: true }))
       setGeneralError(null)
@@ -144,13 +137,11 @@ export function SignInForm() {
                 )}
               </div>
 
-              <TurnstileCaptcha onVerify={(token) => setTurnstileToken(token)} />
-
               {generalError && <p className="text-center text-sm text-red-500">{generalError}</p>}
               <Button
                 type="submit"
                 className="w-full cursor-pointer"
-                disabled={loadingButtons.email || !turnstileToken}
+                disabled={loadingButtons.email}
               >
                 {loadingButtons.email ? "Logging in..." : "Login"}
               </Button>

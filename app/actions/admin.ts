@@ -76,49 +76,19 @@ export async function getAdminStatsAndUsers() {
     .from("project")
     .select("*", { count: "exact", head: true })
 
-  // Premium launches
-  const { count: premiumLaunches } = await supabase
-    .from("project")
-    .select("*", { count: "exact", head: true })
-    .eq("launch_type", "premium")
-
-  // Premium plus launches
-  const { count: premiumPlusLaunches } = await supabase
-    .from("project")
-    .select("*", { count: "exact", head: true })
-    .eq("launch_type", "premium_plus")
-
   // New launches today
   const { count: newLaunchesToday } = await supabase
     .from("project")
     .select("*", { count: "exact", head: true })
     .gte("created_at", todayISO)
 
-  // New premium launches today
-  const { count: newPremiumLaunchesToday } = await supabase
-    .from("project")
-    .select("*", { count: "exact", head: true })
-    .gte("created_at", todayISO)
-    .eq("launch_type", "premium")
-
-  // New premium plus launches today
-  const { count: newPremiumPlusLaunchesToday } = await supabase
-    .from("project")
-    .select("*", { count: "exact", head: true })
-    .gte("created_at", todayISO)
-    .eq("launch_type", "premium_plus")
-
   return {
     users,
     stats: {
       totalLaunches: Number(totalLaunches || 0),
-      premiumLaunches: Number(premiumLaunches || 0),
-      premiumPlusLaunches: Number(premiumPlusLaunches || 0),
       totalUsers: users.length,
       newUsersToday: Number(newUsersToday || 0),
       newLaunchesToday: Number(newLaunchesToday || 0),
-      newPremiumLaunchesToday: Number(newPremiumLaunchesToday || 0),
-      newPremiumPlusLaunchesToday: Number(newPremiumPlusLaunchesToday || 0),
     },
   }
 }
@@ -131,7 +101,7 @@ export async function getFreeLaunchAvailability() {
   const startDate = format(addDays(today, LAUNCH_SETTINGS.MIN_DAYS_AHEAD), DATE_FORMAT.API)
   const endDate = format(addDays(today, LAUNCH_SETTINGS.MAX_DAYS_AHEAD), DATE_FORMAT.API)
 
-  const availability = await getLaunchAvailabilityRange(startDate, endDate, "free")
+  const availability = await getLaunchAvailabilityRange(startDate, endDate)
 
   // Find the first available date
   const firstAvailableDate = availability.find((date) => date.freeSlots > 0)

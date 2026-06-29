@@ -3,29 +3,12 @@ import { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
-import {
-  RiArticleLine,
-  RiInformationLine,
-  RiLinkM,
-  RiSearchLine,
-  RiTrophyLine,
-  RiUserStarLine,
-} from "@remixicon/react"
 import { ArrowLeft, Calendar, Clock } from "lucide-react"
 import { MDXRemote } from "next-mdx-remote/rsc"
 import remarkGfm from "remark-gfm"
 
-import { DOMAIN_AUTHORITY, LAUNCH_SETTINGS } from "@/lib/constants"
+import { DOMAIN_AUTHORITY } from "@/lib/constants"
 import { createClient } from "@/lib/supabase/server"
-import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
 import { TableOfContents } from "@/components/blog/table-of-contents"
 
 export async function generateMetadata({
@@ -185,161 +168,6 @@ export default async function ReviewPage({ params }: { params: Promise<{ slug: s
             <div className="sticky top-20 space-y-4">
               {/* Table of Contents */}
               <TableOfContents />
-
-              {/* CTA Card */}
-              <div className="from-primary/5 to-primary/10 rounded-2xl bg-gradient-to-br p-4">
-                <div className="mb-4 text-center">
-                  <h2 className="text-foreground text-base font-semibold">
-                    Want a review like this?
-                  </h2>
-                  <p className="text-muted-foreground text-xs">
-                    Boost your product&apos;s visibility and credibility
-                  </p>
-                </div>
-
-                <div className="mb-4 space-y-2">
-                  <div className="flex items-start gap-2">
-                    <RiSearchLine className="text-primary mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                    <div>
-                      <div className="text-foreground text-xs font-medium">
-                        Rank on Google for &ldquo;[product] review&rdquo;
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <RiTrophyLine className="text-primary mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                    <div>
-                      <div className="text-foreground text-xs font-medium">
-                        Get a High-Quality Backlink
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <RiUserStarLine className="text-primary mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                    <div>
-                      <div className="text-foreground text-xs font-medium">
-                        Build customer trust with professional reviews
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button
-                      size="sm"
-                      className="bg-primary text-primary-foreground hover:bg-primary/90 w-full"
-                    >
-                      Get Your Review
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto sm:max-w-lg">
-                    <DialogHeader className="pb-6">
-                      <DialogTitle className="text-xl font-semibold">
-                        SEO Growth Package
-                      </DialogTitle>
-                      <DialogDescription className="text-muted-foreground">
-                        Complete SEO solution to rank on Google
-                      </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="space-y-6">
-                      {/* Price */}
-                      <div className="text-center">
-                        <div className="text-3xl font-bold">
-                          ${LAUNCH_SETTINGS.ARTICLE_PRICE}
-                          <span className="text-muted-foreground ml-2 text-lg font-normal line-through">
-                            $199
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* What's included */}
-                      <div>
-                        <h3 className="mb-4 font-medium">What you get:</h3>
-                        <div className="space-y-3">
-                          <div className="flex gap-3">
-                            <div className="bg-primary/10 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded">
-                              <RiArticleLine className="text-primary h-3 w-3" />
-                            </div>
-                            <div className="min-w-0">
-                              <div className="text-sm font-medium">SEO Article</div>
-                              <div className="text-muted-foreground text-xs">
-                                Custom &ldquo;[Product] review&rdquo; content
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex gap-3">
-                            <div className="bg-primary/10 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded">
-                              <RiLinkM className="text-primary h-3 w-3" />
-                            </div>
-                            <div className="min-w-0">
-                              <div className="text-sm font-medium">Premium Launch</div>
-                              <div className="text-muted-foreground text-xs">
-                                DR {DOMAIN_AUTHORITY} dofollow backlink included
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Process */}
-                      <div>
-                        <h3 className="mb-4 font-medium">What happens next:</h3>
-                        <div className="space-y-3">
-                          <div className="flex gap-3">
-                            <div className="bg-primary flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-xs font-medium text-white">
-                              1
-                            </div>
-                            <div className="text-sm">Pay & secure your slot</div>
-                          </div>
-                          <div className="flex gap-3">
-                            <div className="bg-primary flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-xs font-medium text-white">
-                              2
-                            </div>
-                            <div className="text-sm">
-                              <div>We contact you in 24h</div>
-                              <div className="text-muted-foreground text-xs">
-                                Product access, keywords, details
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex gap-3">
-                            <div className="bg-primary flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-xs font-medium text-white">
-                              3
-                            </div>
-                            <div className="text-sm">Premium launch next day</div>
-                          </div>
-                          <div className="flex gap-3">
-                            <div className="bg-primary flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-xs font-medium text-white">
-                              4
-                            </div>
-                            <div className="text-sm">SEO article in 5-7 days</div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Requirement */}
-                      <div className="bg-muted/30 rounded p-3">
-                        <div className="flex gap-2">
-                          <RiInformationLine className="text-muted-foreground mt-0.5 h-4 w-4 flex-shrink-0" />
-                          <div className="text-sm">
-                            <span className="font-medium">Requirement:</span> Free product access
-                            for testing
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Button */}
-                      <Button className="h-11 w-full" asChild>
-                        <Link href={process.env.NEXT_PUBLIC_SEO_ARTICLE_LINK!} target="_blank">
-                          Get SEO Package - ${LAUNCH_SETTINGS.ARTICLE_PRICE}
-                        </Link>
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </div>
             </div>
           </div>
         </div>

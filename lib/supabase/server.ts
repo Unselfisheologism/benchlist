@@ -2,11 +2,21 @@ import { cookies } from "next/headers"
 
 import { createServerClient } from "@supabase/ssr"
 
-export async function createClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ""
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error("Missing Supabase env vars")
+export async function createClient(): Promise<ReturnType<typeof createServerClient> | null> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  // During build (CI without .env) or when env vars are not yet injected,
+  // return null rather than crashing. Callers handle null gracefully.
+  if (
+    !supabaseUrl ||
+    !supabaseKey ||
+    supabaseUrl === "undefined" ||
+    supabaseKey === "undefined" ||
+    !supabaseUrl.startsWith("http") ||
+    supabaseUrl === "undefined"
+  ) {
+    return null
   }
 
   const cookieStore = await cookies()

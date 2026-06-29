@@ -13,13 +13,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 
 import { Input } from "../ui/input"
 import { Label } from "../ui/label"
-import { TurnstileCaptcha } from "./turnstile-captcha"
 
 export function ForgotPasswordForm() {
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [submittedEmail, setSubmittedEmail] = useState("")
-  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const {
@@ -31,11 +29,6 @@ export function ForgotPasswordForm() {
   })
 
   const handleForgotPassword = async (data: ForgotPasswordFormData) => {
-    if (!turnstileToken) {
-      setError("Please complete the security verification")
-      return
-    }
-
     try {
       setLoading(true)
       setError(null)
@@ -83,10 +76,7 @@ export function ForgotPasswordForm() {
               {errors.email && <p className="text-sm text-red-500">{errors.email.message}</p>}
             </div>
 
-            <TurnstileCaptcha onVerify={(token) => setTurnstileToken(token)} />
-
             {error && <p className="text-center text-sm text-red-500">{error}</p>}
-
             {success && (
               <div className="text-center text-sm">
                 <p className="text-muted-foreground">
@@ -95,7 +85,7 @@ export function ForgotPasswordForm() {
                 </p>
               </div>
             )}
-            <Button type="submit" className="w-full" disabled={loading || !turnstileToken}>
+            <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Sending..." : "Send reset link"}
             </Button>
             <div className="text-muted-foreground text-center text-sm">
