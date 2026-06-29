@@ -1,12 +1,33 @@
 "use server"
 
-import { revalidatePath } from "next/cache"
+import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js"
+import { addDays, format } from "date-fns"
 
-import { checkAdminAccess, createAdminClient, getAdminClient } from "@/lib/supabase/admin"
+import { DATE_FORMAT, LAUNCH_SETTINGS } from "@/lib/constants"
 import { createClient } from "@/lib/supabase/server"
 
-export async function getAdminStats() {
-  const supabase = getAdminClient()
+import { getLaunchAvailabilityRange } from "./launch"
+
+const getAdminClient = () =>
+  createSupabaseAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
+
+// Vérification des droits admin
+async function checkAdminAccess() {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user || user.user_metadata?.role !== "admin") {
+    throw new Error("Unauthorized: Admin access required")
+  }
+}
+
+// Get all users and launch stats
+export async function getAdminStatsAndUsers() {
+  const supabase = await getAdminClient()
   await checkAdminAccess()
 
   // Get all users, sorted by registration date descending
@@ -55,399 +76,163 @@ export async function getAdminStats() {
   today.setUTCHours(0, 0, 0, 0)
   const todayISO = today.toISOString()
 
-  // Get this week's start (Monday) at midnight UTC
-  const dayOfWeek = today.getUTCDay()
-  const weekStart = new Date(today)
-  weekStart.setUTCDate(today.getUTCDate() - ((dayOfWeek + 6) % 7)) // Monday
-  const weekStartISO = weekStart.toISOString()
-
-  // Get this month's start at midnight UTC
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
-  const monthStartISO = monthStart.toISOString()
-
-  // Get projects with scheduled_launch_date
-  const { data: scheduledProjects, error: scheduledError } = await supabase
-    .from("projects")
-    .select("id, name, slug, launch_status, scheduled_launch_date, launch_type")
-    .not("scheduled_launch_date", "is", null)
-    .order("scheduled_launch_date", { ascending: true })
-
-  if (scheduledError) throw scheduledError
-
-  // Get project counts
-  const { count: totalProjects } = await supabase
-    .from("projects")
-    .select("id", { count: "exact", head: true })
-
-  const { count: pendingProjects } = await supabase
-    .from("projects")
-    .select("id", { count: "exact", head: true })
-    .eq("launch_status", "draft")
-
-  const { count: launchedProjects } = await supabase
-    .from("projects")
-    .select("id", { count: "exact", head: true })
-    .eq("launch_status", "launched")
-
-  const { count: ongoingProjects } = await supabase
-    .from("projects")
-    .select("id", { count: "exact", head: true })
-    .eq("launch_status", "ongoing")
-
-  const { count: scheduledProjectsCount } = await supabase
-    .from("projects")
-    .select("id", { count: "exact", head: true })
-    .eq("launch_status", "scheduled")
-
-  // Get upvote counts
-  const { count: totalUpvotes } = await supabase
-    .from("upvotes")
-    .select("id", { count: "exact", head: true })
-
-  const { count: todayUpvotes } = await supabase
-    .from("upvotes")
-    .select("id", { count: "exact", head: true })
+  // Get new users today
+  const { count: newUsersToday } = await supabase
+    .from("user")
+    .select("*", { count: "exact", head: true })
     .gte("created_at", todayISO)
 
-  const { count: weekUpvotes } = await supabase
-    .from("upvotes")
-    .select("id", { count: "exact", head: true })
-    .gte("created_at", weekStartISO)
+  // Get launch stats — total launches
+  const { count: totalLaunches } = await supabase
+    .from("project")
+    .select("*", { count: "exact", head: true })
 
-  const { count: monthUpvotes } = await supabase
-    .from("upvotes")
-    .select("id", { count: "exact", head: true })
-    .gte("created_at", monthStartISO)
-
-  // Get comment counts
-  const { count: totalComments } = await supabase
-    .from("comments")
-    .select("id", { count: "exact", head: true })
-
-  const { count: todayComments } = await supabase
-    .from("comments")
-    .select("id", { count: "exact", head: true })
+  // New launches today
+  const { count: newLaunchesToday } = await supabase
+    .from("project")
+    .select("*", { count: "exact", head: true })
     .gte("created_at", todayISO)
-
-  const { count: weekComments } = await supabase
-    .from("comments")
-    .select("id", { count: "exact", head: true })
-    .gte("created_at", weekStartISO)
-
-  const { count: monthComments } = await supabase
-    .from("comments")
-    .select("id", { count: "exact", head: true })
-    .gte("created_at", monthStartISO)
-
-  // Get category counts
-  const { count: totalCategories } = await supabase
-    .from("categories")
-    .select("id", { count: "exact", head: true })
 
   return {
-    users: {
-      total: users.length,
-      recent: users.slice(0, 5),
-    },
-    projects: {
-      total: totalProjects ?? 0,
-      pending: pendingProjects ?? 0,
-      launched: launchedProjects ?? 0,
-      ongoing: ongoingProjects ?? 0,
-      scheduled: scheduledProjectsCount ?? 0,
-      scheduledProjects: scheduledProjects ?? [],
-    },
-    upvotes: {
-      total: totalUpvotes ?? 0,
-      today: todayUpvotes ?? 0,
-      week: weekUpvotes ?? 0,
-      month: monthUpvotes ?? 0,
-    },
-    comments: {
-      total: totalComments ?? 0,
-      today: todayComments ?? 0,
-      week: weekComments ?? 0,
-      month: monthComments ?? 0,
-    },
-    categories: {
-      total: totalCategories ?? 0,
+    users,
+    stats: {
+      totalLaunches: Number(totalLaunches || 0),
+      totalUsers: users.length,
+      newUsersToday: Number(newUsersToday || 0),
+      newLaunchesToday: Number(newLaunchesToday || 0),
     },
   }
 }
 
-export async function getAllProjectsForAdmin() {
-  const supabase = getAdminClient()
+// Get free launch availability
+export async function getFreeLaunchAvailability() {
   await checkAdminAccess()
 
-  const { data: projects, error } = await supabase
-    .from("projects")
-    .select(
-      `
-      id, name, slug, description, logo_url, website_url, launch_status, launch_type,
-      daily_ranking, scheduled_launch_date, source_url, created_at, updated_at,
-      categories:project_to_category(
-        categories(id, name)
-      )
-    `,
-    )
-    .order("created_at", { ascending: false })
+  const today = new Date()
+  const startDate = format(addDays(today, LAUNCH_SETTINGS.MIN_DAYS_AHEAD), DATE_FORMAT.API)
+  const endDate = format(addDays(today, LAUNCH_SETTINGS.MAX_DAYS_AHEAD), DATE_FORMAT.API)
 
-  if (error) throw error
+  const availability = await getLaunchAvailabilityRange(startDate, endDate)
 
-  // Format the categories
-  const formattedProjects = (projects ?? []).map((p) => ({
-    ...p,
-    categories: Array.isArray(p.categories)
-      ? p.categories.map((pc: { categories: { id: string; name: string } }) => pc.categories)
-      : [],
-  }))
+  // Find the first available date
+  const firstAvailableDate = availability.find((date) => date.freeSlots > 0)
 
-  return formattedProjects
+  return {
+    availability,
+    firstAvailableDate: firstAvailableDate
+      ? {
+          date: firstAvailableDate.date,
+          freeSlots: firstAvailableDate.freeSlots,
+        }
+      : null,
+  }
 }
 
-export async function updateUserRole(userId: string, role: string) {
-  const supabase = getAdminClient()
+// Get all categories
+export async function getCategories() {
+  const supabase = await getAdminClient()
   await checkAdminAccess()
 
-  const { error } = await supabase.from("user").update({ role }).eq("id", userId)
+  const { data: categories, error: catError } = await supabase
+    .from("category")
+    .select("name")
+    .order("name", { ascending: true })
 
-  if (error) throw error
+  if (catError) throw catError
 
-  revalidatePath("/admin")
+  const { count: totalCount } = await supabase
+    .from("category")
+    .select("*", { count: "exact", head: true })
+
+  return {
+    categories: categories ?? [],
+    totalCount: totalCount ?? 0,
+  }
 }
 
-export async function getAllCategoriesForAdmin() {
-  const supabase = getAdminClient()
+// Add a new category
+export async function addCategory(name: string) {
+  const supabase = await getAdminClient()
   await checkAdminAccess()
 
-  const { data: categories, error } = await supabase.from("categories").select("*").order("name")
-
-  if (error) throw error
-
-  return categories ?? []
-}
-
-export async function createCategory(name: string) {
-  const supabase = getAdminClient()
-  await checkAdminAccess()
-
-  const slug = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "")
-
-  // Check if slug already exists
-  const { data: existing } = await supabase
-    .from("categories")
-    .select("id")
-    .eq("slug", slug)
-    .single()
-
-  if (existing) {
-    throw new Error("A category with this name already exists")
+  // Name validation
+  const trimmedName = name.trim()
+  if (!trimmedName) {
+    return { success: false, error: "Category name cannot be empty" }
+  }
+  if (trimmedName.length < 2) {
+    return { success: false, error: "Category name must be at least 2 characters long" }
+  }
+  if (trimmedName.length > 50) {
+    return { success: false, error: "Category name cannot exceed 50 characters" }
   }
 
-  const { data, error } = await supabase.from("categories").insert({ name, slug }).select().single()
+  try {
+    const id = trimmedName.toLowerCase().replace(/\s+/g, "-")
 
-  if (error) throw error
+    // Check if category already exists
+    const { data: existing, error: existError } = await supabase
+      .from("category")
+      .select("id")
+      .eq("name", trimmedName)
+      .limit(1)
 
-  revalidatePath("/admin")
-  return data
-}
+    if (existError) throw existError
 
-export async function updateCategory(categoryId: string, name: string) {
-  const supabase = getAdminClient()
-  await checkAdminAccess()
+    if (existing && existing.length > 0) {
+      return { success: false, error: "This category already exists" }
+    }
 
-  const slug = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "")
+    const { error: insertError } = await supabase.from("category").insert({ id, name: trimmedName })
 
-  const { error } = await supabase.from("categories").update({ name, slug }).eq("id", categoryId)
+    if (insertError) {
+      if (insertError.message.includes("unique") || insertError.code === "23505") {
+        return { success: false, error: "This category already exists" }
+      }
+      throw insertError
+    }
 
-  if (error) throw error
-
-  revalidatePath("/admin")
-}
-
-export async function deleteCategory(categoryId: string) {
-  const supabase = getAdminClient()
-  await checkAdminAccess()
-
-  // First, remove all project-category associations
-  const { error: linkError } = await supabase
-    .from("project_to_category")
-    .delete()
-    .eq("category_id", categoryId)
-
-  if (linkError) throw linkError
-
-  // Then delete the category itself
-  const { error } = await supabase.from("categories").delete().eq("id", categoryId)
-
-  if (error) throw error
-
-  revalidatePath("/admin")
-}
-
-export async function deleteProject(projectId: string) {
-  const supabase = getAdminClient()
-  await checkAdminAccess()
-
-  // First, remove project-category associations
-  const { error: linkError } = await supabase
-    .from("project_to_category")
-    .delete()
-    .eq("project_id", projectId)
-
-  if (linkError) throw linkError
-
-  // Then delete the project itself
-  const { error } = await supabase.from("projects").delete().eq("id", projectId)
-
-  if (error) throw error
-
-  revalidatePath("/admin")
-}
-
-export async function updateProjectStatus(
-  projectId: string,
-  status: string,
-  options?: { scheduledLaunchDate?: string },
-) {
-  const supabase = getAdminClient()
-  await checkAdminAccess()
-
-  const updateData: Record<string, unknown> = { launch_status: status }
-
-  if (status === "scheduled" && options?.scheduledLaunchDate) {
-    updateData.scheduled_launch_date = options.scheduledLaunchDate
-  } else if (status !== "scheduled") {
-    updateData.scheduled_launch_date = null
+    return { success: true }
+  } catch (error) {
+    console.error("Error adding category:", error)
+    if (error instanceof Error && error.message.includes("unique constraint")) {
+      return { success: false, error: "This category already exists" }
+    }
+    return { success: false, error: "An error occurred while adding the category" }
   }
-
-  const { error } = await supabase.from("projects").update(updateData).eq("id", projectId)
-
-  if (error) throw error
-
-  revalidatePath("/admin")
 }
 
-export async function toggleFeatured(projectId: string, featured: boolean) {
-  const supabase = getAdminClient()
+// Ban user
+export async function banUser(userId: string) {
+  const supabase = await getAdminClient()
   await checkAdminAccess()
+  const { error } = await supabase.from("user").update({ banned: true }).eq("id", userId)
+  if (error) throw error
+}
 
+// Unban user
+export async function unbanUser(userId: string) {
+  const supabase = await getAdminClient()
+  await checkAdminAccess()
   const { error } = await supabase
-    .from("projects")
-    .update({ is_featured: featured })
-    .eq("id", projectId)
-
+    .from("user")
+    .update({ banned: false, ban_reason: null, ban_expires: null })
+    .eq("id", userId)
   if (error) throw error
-
-  revalidatePath("/admin")
 }
 
-export async function createBlogArticle(data: {
-  title: string
-  slug: string
-  description: string
-  content: string
-  cover_image_url?: string
-  author_name?: string
-  author_avatar_url?: string
-}) {
-  const supabase = createAdminClient()
+// Delete user
+export async function deleteUser(userId: string) {
+  const supabase = await getAdminClient()
   await checkAdminAccess()
-
-  const { error } = await supabase.from("blog_articles").insert(data)
+  const { error } = await supabase.from("user").delete().eq("id", userId)
   if (error) throw error
-
-  revalidatePath("/admin")
-  revalidatePath("/blog")
 }
 
-export async function updateBlogArticle(
-  articleId: string,
-  data: {
-    title?: string
-    slug?: string
-    description?: string
-    content?: string
-    cover_image_url?: string
-    author_name?: string
-    author_avatar_url?: string
-  },
-) {
-  const supabase = createAdminClient()
+// Update user role
+export async function updateUserRole(userId: string, role: string) {
+  const supabase = await getAdminClient()
   await checkAdminAccess()
-
-  const { error } = await supabase.from("blog_articles").update(data).eq("id", articleId)
+  const { error } = await supabase.from("user").update({ role }).eq("id", userId)
   if (error) throw error
-
-  revalidatePath("/admin")
-  revalidatePath("/blog")
-}
-
-export async function deleteBlogArticle(articleId: string) {
-  const supabase = createAdminClient()
-  await checkAdminAccess()
-
-  const { error } = await supabase.from("blog_articles").delete().eq("id", articleId)
-  if (error) throw error
-
-  revalidatePath("/admin")
-  revalidatePath("/blog")
-}
-
-export async function createReviewArticle(data: {
-  title: string
-  slug: string
-  description: string
-  content: string
-  cover_image_url?: string
-  author_name?: string
-  author_avatar_url?: string
-}) {
-  const supabase = createAdminClient()
-  await checkAdminAccess()
-
-  const { error } = await supabase.from("seo_articles").insert(data)
-  if (error) throw error
-
-  revalidatePath("/admin")
-  revalidatePath("/reviews")
-}
-
-export async function updateReviewArticle(
-  articleId: string,
-  data: {
-    title?: string
-    slug?: string
-    description?: string
-    content?: string
-    cover_image_url?: string
-    author_name?: string
-    author_avatar_url?: string
-  },
-) {
-  const supabase = createAdminClient()
-  await checkAdminAccess()
-
-  const { error } = await supabase.from("seo_articles").update(data).eq("id", articleId)
-  if (error) throw error
-
-  revalidatePath("/admin")
-  revalidatePath("/reviews")
-}
-
-export async function deleteReviewArticle(articleId: string) {
-  const supabase = createAdminClient()
-  await checkAdminAccess()
-
-  const { error } = await supabase.from("seo_articles").delete().eq("id", articleId)
-  if (error) throw error
-
-  revalidatePath("/admin")
-  revalidatePath("/reviews")
 }
