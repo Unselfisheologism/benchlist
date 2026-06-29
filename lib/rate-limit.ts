@@ -1,5 +1,10 @@
 // Rate limiting disabled — always allows requests
-export async function checkRateLimit(..._args: unknown[]): Promise<{
+/* eslint-disable @typescript-eslint/no-unused-vars */
+export async function checkRateLimit(
+  identifier?: string,
+  limit?: number,
+  window?: number,
+): Promise<{
   success: boolean
   remaining: number
   reset: number
