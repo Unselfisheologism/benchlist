@@ -140,9 +140,9 @@ export default async function BlogPage() {
                 >
                   {/* Article Image */}
                   <div className="bg-muted relative aspect-[16/9] overflow-hidden">
-                    {article.image ? (
+                    {article.cover_image_url ? (
                       <img
-                        src={article.image}
+                        src={article.cover_image_url}
                         alt={article.title}
                         className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-103"
                       />

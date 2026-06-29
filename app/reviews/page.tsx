@@ -131,9 +131,9 @@ export default async function ReviewsPage() {
                 >
                   {/* Review Image */}
                   <div className="bg-muted relative aspect-[16/9] overflow-hidden">
-                    {review.image ? (
+                    {review.cover_image_url ? (
                       <img
-                        src={review.image}
+                        src={review.cover_image_url}
                         alt={review.title}
                         className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-103"
                       />
