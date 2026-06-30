@@ -3,8 +3,9 @@ import Link from "next/link"
 import { RiGithubFill, RiTwitterXFill } from "@remixicon/react"
 
 const discoverLinks = [
+  { title: "AI Benchmarks", href: "/benchmarks" },
   { title: "Trending Benchmarks", href: "/trending" },
-  { title: "All Benchmarks", href: "/categories" },
+  { title: "All Categories", href: "/categories" },
   { title: "Submit Benchmark", href: "/projects/submit" },
 ]
 

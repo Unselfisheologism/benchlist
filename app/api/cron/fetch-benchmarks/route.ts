@@ -1,75 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
 
+import { fetchAllBenchmarks, getAllBenchmarkSources } from "@/lib/benchmarks"
 import { createClient } from "@/lib/supabase/server"
 
-// Benchmark scraping logic
-async function fetchBenchmarkData(sourceUrl: string): Promise<{
-  benchmarkData: Record<string, unknown> | null
-  lastUpdated: string | null
-  error?: string
-}> {
-  try {
-    // Skip if no source URL
-    if (!sourceUrl) return { benchmarkData: null, lastUpdated: null }
-
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 15000)
-
-    const res = await fetch(sourceUrl, {
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "Benchlist/1.0 (benchmark-directory-bot)",
-      },
-    })
-    clearTimeout(timeout)
-
-    if (!res.ok) {
-      return { benchmarkData: null, lastUpdated: null, error: `HTTP ${res.status}` }
-    }
-
-    const contentType = res.headers.get("content-type") || ""
-    let benchmarkData: Record<string, unknown> = {}
-
-    if (contentType.includes("application/json")) {
-      // JSON API endpoint
-      const json = await res.json()
-      benchmarkData = { raw: json, source: "json" }
-    } else if (contentType.includes("text/html")) {
-      // Parse HTML page — extract basic metadata
-      const html = await res.text()
-      // Try to extract title
-      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
-      // Try to extract description from meta tags
-      const descMatch = html.match(/<meta[^>]*name="description"[^>]*content="([^"]+)"/i)
-      // Try to extract og:image
-      const imageMatch = html.match(/<meta[^>]*property="og:image"[^>]*content="([^"]+)"/i)
-
-      benchmarkData = {
-        title: titleMatch?.[1]?.trim() || null,
-        description: descMatch?.[1]?.trim() || null,
-        image: imageMatch?.[1]?.trim() || null,
-        source: "html",
-        url: sourceUrl,
-        fetchedAt: new Date().toISOString(),
-      }
-    } else if (contentType.includes("text/csv")) {
-      const text = await res.text()
-      benchmarkData = { csvPreview: text.slice(0, 5000), source: "csv" }
-    } else {
-      const text = await res.text()
-      benchmarkData = { preview: text.slice(0, 5000), source: contentType }
-    }
-
-    return {
-      benchmarkData,
-      lastUpdated: new Date().toISOString(),
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error"
-    return { benchmarkData: null, lastUpdated: null, error: message }
-  }
-}
-
+/**
+ * GET /api/cron/fetch-benchmarks
+ *
+ * Cron job: fetches all AI benchmark leaderboard data from official sources
+ * and stores it in the ai_benchmarks table.
+ *
+ * Auth: Bearer token via CRON_API_KEY env var.
+ */
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization")
   if (authHeader !== `Bearer ${process.env.CRON_API_KEY}`) {
@@ -78,55 +19,77 @@ export async function GET(req: NextRequest) {
 
   try {
     const supabase = await createClient()
-
-    // Fetch all benchmarks that have a source_url and need updating
-    // Update if never fetched, or last fetched more than 24 hours ago
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-
-    // Get projects with null last_fetched_at or last_fetched_at < oneDayAgo
-    const { data: benchmarksToUpdate } = await supabase
-      .from("projects")
-      .select("*")
-      .or(`last_fetched_at.is.null,last_fetched_at.lt.${oneDayAgo}`)
-      .not("source_url", "is", null)
-      .limit(50) // Cap at 50 per run to avoid rate limits
-
-    const results = []
-
-    for (const bench of benchmarksToUpdate || []) {
-      if (!bench.source_url) continue
-
-      const result = await fetchBenchmarkData(bench.source_url)
-
-      if (!result.error) {
-        await supabase
-          .from("projects")
-          .update({
-            benchmark_data: result.benchmarkData as Record<string, unknown>,
-            last_fetched_at: new Date().toISOString(),
-            last_updated: result.lastUpdated || bench.last_updated,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", bench.id)
-      }
-
-      results.push({
-        name: bench.name,
-        slug: bench.slug,
-        sourceUrl: bench.source_url,
-        success: !result.error,
-        error: result.error || null,
-      })
-
-      // Small delay between requests to be respectful
-      await new Promise((resolve) => setTimeout(resolve, 500))
+    if (!supabase) {
+      return NextResponse.json({ error: "Database unavailable" }, { status: 503 })
     }
 
+    // Ensure all benchmark source definitions exist in the DB
+    const sources = getAllBenchmarkSources()
+    for (const source of sources) {
+      const { data: existing } = await supabase
+        .from("ai_benchmarks")
+        .select("id")
+        .eq("slug", source.slug)
+        .limit(1)
+
+      if (!existing || existing.length === 0) {
+        // Insert new benchmark definition
+        await supabase.from("ai_benchmarks").insert({
+          slug: source.slug,
+          name: source.name,
+          description: source.description,
+          category: source.category,
+          source_type: source.source_type,
+          source_url: source.source_url,
+          methodology: source.methodology || null,
+          paper_url: source.paper_url || null,
+          repo_url: source.repo_url || null,
+          logo_url: source.logo_url || null,
+          website_url: source.website_url || null,
+          is_active: true,
+          fetch_status: "pending",
+        })
+      }
+    }
+
+    // Fetch all benchmark data
+    const results = await fetchAllBenchmarks()
+
+    // Update DB with fetched data
+    const updates = []
+    for (const [slug, result] of results) {
+      const updateData = {
+        leaderboard_data: result.entries,
+        total_models: result.total_models,
+        top_model: result.top_model || null,
+        top_score: result.top_score || null,
+        last_fetched_at: new Date().toISOString(),
+        last_updated: result.last_updated,
+        fetch_status: result.error ? "error" : "success",
+        fetch_error: result.error || null,
+        updated_at: new Date().toISOString(),
+      }
+
+      const { error } = await supabase.from("ai_benchmarks").update(updateData).eq("slug", slug)
+
+      updates.push({
+        slug,
+        success: !error,
+        models: result.total_models,
+        topModel: result.top_model,
+        error: error?.message || result.error || null,
+      })
+    }
+
+    const successCount = updates.filter((u) => u.success && !u.error).length
+    const errorCount = updates.filter((u) => !u.success || u.error).length
+
     return NextResponse.json({
-      fetched: results.length,
-      updated: results.filter((r) => r.success).length,
-      failed: results.filter((r) => !r.success).length,
-      results,
+      timestamp: new Date().toISOString(),
+      total: results.size,
+      success: successCount,
+      errors: errorCount,
+      results: updates,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Internal server error"
@@ -135,7 +98,11 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST — manual single-benchmark fetch (called from dashboard/submit form)
+/**
+ * POST /api/cron/fetch-benchmarks
+ *
+ * Manual trigger: fetch a single benchmark by slug.
+ */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
@@ -146,42 +113,44 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = await createClient()
-
-    const { data: benches } = await supabase.from("projects").select("*").eq("slug", slug).limit(1)
-
-    if (!benches || benches.length === 0) {
-      return NextResponse.json({ error: "Benchmark not found" }, { status: 404 })
+    if (!supabase) {
+      return NextResponse.json({ error: "Database unavailable" }, { status: 503 })
     }
 
-    const bench = benches[0]
-    if (!bench.source_url) {
-      return NextResponse.json(
-        { error: "No sourceUrl configured for this benchmark" },
-        { status: 400 },
-      )
+    const { fetchBenchmark } = await import("@/lib/benchmarks")
+    const result = await fetchBenchmark(slug)
+
+    if (!result) {
+      return NextResponse.json({ error: `Unknown benchmark: ${slug}` }, { status: 404 })
     }
 
-    const result = await fetchBenchmarkData(bench.source_url)
-
-    if (result.error) {
-      return NextResponse.json({ error: result.error }, { status: 502 })
-    }
-
-    await supabase
-      .from("projects")
+    // Update DB
+    const { error } = await supabase
+      .from("ai_benchmarks")
       .update({
-        benchmark_data: result.benchmarkData as Record<string, unknown>,
+        leaderboard_data: result.entries,
+        total_models: result.total_models,
+        top_model: result.top_model || null,
+        top_score: result.top_score || null,
         last_fetched_at: new Date().toISOString(),
-        last_updated: result.lastUpdated || bench.last_updated,
+        last_updated: result.last_updated,
+        fetch_status: result.error ? "error" : "success",
+        fetch_error: result.error || null,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", bench.id)
+      .eq("slug", slug)
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
 
     return NextResponse.json({
-      name: bench.name,
-      success: true,
-      lastFetchedAt: new Date().toISOString(),
-      benchmarkData: result.benchmarkData,
+      slug,
+      success: !result.error,
+      models: result.total_models,
+      topModel: result.top_model,
+      entries: result.entries.slice(0, 10), // Top 10 only
+      error: result.error || null,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Internal error"
