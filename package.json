@@ -11,7 +11,11 @@
     "dev": "next dev --turbopack",
     "lint": "next lint",
     "prepare": "npx simple-git-hooks",
-    "start": "next start"
+    "start": "next start",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "simple-git-hooks": {
     "pre-commit": "npx lint-staged --verbose",
@@ -61,6 +65,7 @@
     "@mdx-js/loader": "^3.1.0",
     "@mdx-js/react": "^3.1.0",
     "@next/mdx": "^15.3.3",
+    "@opennextjs/cloudflare": "^1.20.1",
     "@radix-ui/react-accordion": "^1.2.10",
     "@radix-ui/react-alert-dialog": "^1.1.13",
     "@radix-ui/react-aspect-ratio": "^1.1.6",
@@ -159,6 +164,7 @@
     "simple-git-hooks": "^2.13.0",
     "sort-package-json": "^3.2.1",
     "tsx": "^4.19.4",
-    "typescript": "5.8.2"
+    "typescript": "5.8.2",
+    "wrangler": "^4.105.0"
   }
 }

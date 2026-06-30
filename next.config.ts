@@ -66,3 +66,5 @@ const withMDX = createMDX({
 
 // Combine MDX and Next.js config
 export default withMDX(nextConfig)
+
+import('@opennextjs/cloudflare').then(m => m.initOpenNextCloudflareForDev());

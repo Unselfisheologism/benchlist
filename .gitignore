@@ -47,3 +47,12 @@ next-env.d.ts
 # blog
 blog-article.ts
 seo-article.ts
+# OpenNext
+.open-next
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+
+!.env.example
