@@ -20,7 +20,7 @@ const fontHeading = FontHeading({
 })
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_URL!),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_URL || "https://benchlist.dev"),
   title: "Benchlist — The AI Benchmark Directory",
   description:
     "Benchlist is the open directory of AI model benchmarks. Discover, track, and compare SWE-Bench, HLE, ARC-AGI, MMLU, and hundreds more.",
