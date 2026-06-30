@@ -4,6 +4,7 @@ compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = ".open-next"
 
 [limits]
+cpu_ms = 30000
 subrequests = 100
 
 [vars]
