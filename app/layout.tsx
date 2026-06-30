@@ -19,6 +19,8 @@ const fontHeading = FontHeading({
   variable: "--font-heading",
 })
 
+export const dynamic = "force-dynamic"
+
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_URL || "https://benchlist.dev"),
   title: "Benchlist — The AI Benchmark Directory",
