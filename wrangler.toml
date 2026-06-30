@@ -2,3 +2,10 @@ name = "benchlist"
 compatibility_date = "2024-09-25"
 compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = ".open-next"
+
+[vars]
+NEXT_PUBLIC_URL = "https://benchlist.pages.dev"
+NEXT_PUBLIC_SUPABASE_URL = "https://xqhnjbbewoldwtndxfrm.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhxaG5qYmJld29sZHd0bmR4ZnJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwOTY4NDMsImV4cCI6MjA5NjY3Mjg0M30.9WHMU3utNiMGVyHrwYZs5ivGDT29SN8XFtQ5oSU76Lw"
+NEXT_PUBLIC_CONTACT_EMAIL = "contact@benchlist.dev"
+CRON_API_KEY = "benchlist_cron_sk_9f8e7d6c5b4a3210feedcabb18170b1d15e5fa2c8b9a0d1e2f3a4b5c6d7e8f90"

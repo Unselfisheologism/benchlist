@@ -13,6 +13,7 @@ const launchStatus = {
 
 async function getCurrentUserId() {
   const supabase = await createClient()
+  if (!supabase) return null
   const {
     data: { user },
   } = await supabase.auth.getUser()
@@ -81,6 +82,12 @@ async function enrichProjectsWithUserData<T extends { id: string }>(
 
   const projectIds = projects.map((p) => p.id)
   const supabase = await createClient()
+  if (!supabase) {
+    return projects as (T & {
+      userHasUpvoted: boolean
+      categories: { id: string; name: string }[]
+    })[]
+  }
 
   const { data: projectCategories } = await supabase
     .from("project_to_category")
@@ -180,6 +187,7 @@ export async function getYesterdayProjects(
 
   const supabase = await createClient()
 
+  if (!supabase) return []
   const { data: yesterdayProjects } = await supabase
     .from("projects")
     .select(
@@ -218,6 +226,7 @@ export async function getMonthBestProjects(limit: number = PROJECT_LIMITS_VARIAB
 
   const supabase = await createClient()
 
+  if (!supabase) return []
   const { data: monthProjects } = await supabase
     .from("projects")
     .select(
@@ -257,6 +266,7 @@ export async function getYesterdayTopProjects() {
 
   const supabase = await createClient()
 
+  if (!supabase) return []
   const { data: topProjects } = await supabase
     .from("projects")
     .select("id, name, slug, logo_url, daily_ranking")
@@ -279,6 +289,7 @@ export async function getWinnersByDate(date: Date) {
 
   const supabase = await createClient()
 
+  if (!supabase) return []
   const { data: winnersBase } = await supabase
     .from("projects")
     .select(
