@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Voting and commenting system
   - Categories and trending sections
   - Admin dashboard
-- Documentation:
+- Documentation :
   - README with project overview
   - CONTRIBUTING guidelines
   - CODE_OF_CONDUCT
