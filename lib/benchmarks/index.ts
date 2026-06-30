@@ -9,26 +9,56 @@ import { ARC_AGI_SOURCES, fetchArcAgiLeaderboard } from "./fetchers/arc-agi"
 import { fetchHuggingFaceLeaderboard, HUGGINGFACE_SOURCES } from "./fetchers/huggingface"
 import { fetchLiveCodeBenchLeaderboard, LIVECODEBENCH_SOURCES } from "./fetchers/livecodebench"
 import { fetchLmsysLeaderboard, LMSYS_SOURCES } from "./fetchers/lmsys"
-import { fetchMmluLeaderboard, MMLU_SOURCES } from "./fetchers/mmlu"
+import {
+  fetchAimeLeaderboard,
+  fetchGpqaLeaderboard,
+  fetchHumanevalLeaderboard,
+  fetchMmluLeaderboard,
+  MMLU_SOURCES,
+} from "./fetchers/mmlu"
 import { fetchSwebenchLeaderboard, SWE_BENCH_SOURCES } from "./fetchers/swe-bench"
 import type { BenchmarkDef, BenchmarkSource, FetchResult } from "./types"
 
 /** All registered benchmark definitions */
 const ALL_BENCHMARKS: BenchmarkDef[] = [
-  // SWE-bench
-  ...SWE_BENCH_SOURCES.map((s) => ({ ...s, fetch: fetchSwebenchLeaderboard })),
-  // ARC-AGI
-  ...ARC_AGI_SOURCES.map((s) => ({ ...s, fetch: fetchArcAgiLeaderboard })),
-  // Aider
-  ...AIDER_SOURCES.map((s) => ({ ...s, fetch: fetchAiderLeaderboard })),
-  // LMSYS
-  ...LMSYS_SOURCES.map((s) => ({ ...s, fetch: fetchLmsysLeaderboard })),
-  // MMLU / GPQA / AIME / HumanEval
-  ...MMLU_SOURCES.map((s) => ({ ...s, fetch: fetchMmluLeaderboard })),
+  // SWE-bench (both variants from one fetcher)
+  {
+    ...SWE_BENCH_SOURCES[0],
+    fetch: fetchSwebenchLeaderboard,
+  },
+  // ARC-AGI (first one live-fetches, second returns cached)
+  {
+    ...ARC_AGI_SOURCES[0],
+    fetch: fetchArcAgiLeaderboard,
+  },
+  // Aider (both variants from one fetcher)
+  {
+    ...AIDER_SOURCES[0],
+    fetch: fetchAiderLeaderboard,
+  },
+  // LMSYS (live-fetches overall arena)
+  {
+    ...LMSYS_SOURCES[0],
+    fetch: fetchLmsysLeaderboard,
+  },
+  // MMLU-Pro
+  { ...MMLU_SOURCES[0], fetch: fetchMmluLeaderboard },
+  // GPQA Diamond
+  { ...MMLU_SOURCES[1], fetch: fetchGpqaLeaderboard },
+  // AIME 2024
+  { ...MMLU_SOURCES[2], fetch: fetchAimeLeaderboard },
+  // HumanEval
+  { ...MMLU_SOURCES[3], fetch: fetchHumanevalLeaderboard },
   // LiveCodeBench
-  ...LIVECODEBENCH_SOURCES.map((s) => ({ ...s, fetch: fetchLiveCodeBenchLeaderboard })),
-  // HuggingFace
-  ...HUGGINGFACE_SOURCES.map((s) => ({ ...s, fetch: fetchHuggingFaceLeaderboard })),
+  {
+    ...LIVECODEBENCH_SOURCES[0],
+    fetch: fetchLiveCodeBenchLeaderboard,
+  },
+  // Open LLM Leaderboard (HF)
+  {
+    ...HUGGINGFACE_SOURCES[0],
+    fetch: fetchHuggingFaceLeaderboard,
+  },
 ]
 
 /** Get all benchmark source metadata (no fetch) */
@@ -50,8 +80,8 @@ export async function fetchBenchmark(slug: string): Promise<FetchResult | null> 
 }
 
 /**
- * Fetch ALL benchmarks. Runs each fetcher with a delay between calls.
- * Returns results keyed by slug.
+ * Fetch ALL benchmarks. Runs each fetcher sequentially (no delay) to stay
+ * within CF Workers CPU time limit. Each fetcher has its own timeout.
  */
 export async function fetchAllBenchmarks(): Promise<
   Map<string, FetchResult & { source: BenchmarkSource }>
@@ -74,8 +104,6 @@ export async function fetchAllBenchmarks(): Promise<
         source: def,
       })
     }
-    // Respectful delay between fetchers
-    await new Promise((r) => setTimeout(r, 1000))
   }
 
   return results
