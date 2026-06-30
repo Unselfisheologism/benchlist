@@ -1,6 +1,0 @@
-name = "benchlist"
-compatibility_date = "2024-09-25"
-compatibility_flags = ["nodejs_compat"]
-
-[assets]
-directory = ".worker/assets"
