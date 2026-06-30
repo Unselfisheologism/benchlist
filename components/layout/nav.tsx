@@ -29,7 +29,7 @@ export default async function Nav() {
   const supabase = await createClient()
   const {
     data: { user },
-  } = await supabase.auth.getUser()
+  } = supabase ? await supabase.auth.getUser() : { data: { user: null } }
 
   return (
     <nav className="bg-background/95 border-border/40 sticky top-0 z-50 border-b backdrop-blur-sm">
