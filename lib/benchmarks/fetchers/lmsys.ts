@@ -1,7 +1,11 @@
 /**
  * LMSYS Chatbot Arena (Arena AI) leaderboard fetcher
- * Source: https://openlm.ai/chatbot-arena/
+ * Source: https://huggingface.co/spaces/lmarena-ai/arena-leaderboard
+ *
+ * Now rebranded as "lmarena" — fetches from both the GitHub markdown
+ * and the new HF Space.
  */
+import { normalizeModelName } from "../normalize"
 import type { BenchmarkSource, FetchResult } from "../types"
 
 const LMSYS_SOURCES: BenchmarkSource[] = [
@@ -12,12 +16,13 @@ const LMSYS_SOURCES: BenchmarkSource[] = [
       "Crowdsourced, randomized battle platform for LLMs based on anonymous human preference voting. Elo rating system.",
     category: "leaderboard",
     source_type: "lmsys",
-    source_url: "https://openlm.ai/chatbot-arena/",
+    source_url: "https://huggingface.co/spaces/lmarena-ai/arena-leaderboard",
     methodology:
       "Users chat with two anonymous models side-by-side and vote for the better response. Elo ratings calculated from millions of votes.",
     paper_url: "https://arxiv.org/abs/2403.04132",
     repo_url: "https://github.com/lm-sys/FastChat",
-    website_url: "https://openlm.ai/chatbot-arena/",
+    website_url: "https://huggingface.co/spaces/lmarena-ai/arena-leaderboard",
+    tier: "aggregator",
   },
   {
     slug: "chatbot-arena-coding",
@@ -26,9 +31,9 @@ const LMSYS_SOURCES: BenchmarkSource[] = [
       "Coding-specific subset of Chatbot Arena. Measures human preference for code generation and debugging.",
     category: "coding",
     source_type: "lmsys",
-    source_url: "https://openlm.ai/chatbot-arena/",
+    source_url: "https://huggingface.co/spaces/lmarena-ai/arena-leaderboard",
     methodology: "Same as Chatbot Arena but filtered to coding-related conversations only.",
-    website_url: "https://openlm.ai/chatbot-arena/",
+    website_url: "https://huggingface.co/spaces/lmarena-ai/arena-leaderboard",
   },
 ]
 
@@ -49,9 +54,9 @@ const ARENA_FALLBACK = [
 async function fetchLmsysLeaderboard(): Promise<FetchResult> {
   try {
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 15000)
+    const timeout = setTimeout(() => controller.abort(), 20000)
 
-    // Try the official LMSYS endpoint first
+    // Try the GitHub markdown source first (most reliable)
     const res = await fetch(
       "https://raw.githubusercontent.com/lm-sys/fastchat/main/fastchat/serve/leaderboard.md",
       {
@@ -73,7 +78,7 @@ async function fetchLmsysLeaderboard(): Promise<FetchResult> {
       const rowRegex = /\|\s*\d+\s*\|\s*([^|]+)\s*\|\s*(\d+)\s*\|/g
       let match
       while ((match = rowRegex.exec(text)) !== null) {
-        const model = match[1].trim().replace(/\*\*/g, "")
+        const model = normalizeModelName(match[1].trim().replace(/\*\*/g, ""))
         const score = parseInt(match[2], 10)
         if (model && !isNaN(score) && score > 1000) {
           entries.push({ model, score })
@@ -98,9 +103,62 @@ async function fetchLmsysLeaderboard(): Promise<FetchResult> {
       }
     }
 
+    // Fallback: try the new lmarena-ai HF Space
+    const arenaRes = await fetch("https://lmarena-ai-arena-leaderboard.hf.space/api/", {
+      signal: AbortSignal.timeout(10000),
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        Accept: "application/json",
+      },
+    })
+
+    if (arenaRes.ok) {
+      const data = (await arenaRes.json()) as Record<string, unknown>
+      const entries: { model: string; score: number }[] = []
+
+      if (data && typeof data === "object" && "components" in data) {
+        const components = Array.isArray(data.components) ? data.components : []
+        for (const comp of components) {
+          if (comp && typeof comp === "object" && "props" in comp) {
+            const props = (comp as Record<string, unknown>).props as
+              Record<string, unknown> | undefined
+            if (props?.value && Array.isArray(props.value)) {
+              for (const row of props.value) {
+                if (Array.isArray(row) && row.length >= 2) {
+                  const model = normalizeModelName(String(row[0]))
+                  const score = parseFloat(String(row[1]))
+                  if (model && !isNaN(score) && score > 1000) {
+                    entries.push({ model, score })
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if (entries.length >= 5) {
+        entries.sort((a, b) => b.score - a.score)
+        const ranked = entries.map((e, i) => ({
+          ...e,
+          rank: i + 1,
+          date: new Date().toISOString().split("T")[0],
+        }))
+        return {
+          slug: "chatbot-arena",
+          entries: ranked,
+          total_models: ranked.length,
+          top_model: ranked[0]?.model || "Unknown",
+          top_score: ranked[0]?.score || 0,
+          last_updated: new Date().toISOString(),
+        }
+      }
+    }
+
     // Fallback to cached data
     const fallback = ARENA_FALLBACK.map((e, i) => ({
       ...e,
+      model: normalizeModelName(e.model),
       rank: i + 1,
       date: new Date().toISOString().split("T")[0],
     }))
@@ -116,6 +174,7 @@ async function fetchLmsysLeaderboard(): Promise<FetchResult> {
   } catch (error) {
     const fallback = ARENA_FALLBACK.map((e, i) => ({
       ...e,
+      model: normalizeModelName(e.model),
       rank: i + 1,
       date: new Date().toISOString().split("T")[0],
     }))

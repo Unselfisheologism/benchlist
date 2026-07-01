@@ -4,9 +4,13 @@
 
 export interface BenchmarkEntry {
   model: string
+  /** Normalized canonical model name */
+  canonical_model?: string
   score: number
   rank?: number
   date?: string
+  /** Benchmark version/variant (e.g. "v2", "verified", "lite") */
+  benchmark_version?: string
   metadata?: Record<string, unknown>
 }
 
@@ -22,6 +26,12 @@ export interface BenchmarkSource {
   repo_url?: string
   logo_url?: string
   website_url?: string
+  /** Benchmark version/variant this source tracks */
+  benchmark_version?: string
+  /** How often this benchmark updates (e.g. "daily", "weekly", "monthly") */
+  update_frequency?: string
+  /** Tier: "aggregator" | "direct" | "discovery" */
+  tier?: "aggregator" | "direct" | "discovery"
 }
 
 export interface FetchResult {
@@ -32,9 +42,22 @@ export interface FetchResult {
   top_score: number
   last_updated: string
   error?: string
+  /** The benchmark version that was fetched */
+  benchmark_version?: string
 }
 
 /** A benchmark source paired with its fetch function */
 export interface BenchmarkDef extends BenchmarkSource {
   fetch: () => Promise<FetchResult>
+}
+
+/** Discovery result from arXiv / HF Papers */
+export interface BenchmarkDiscovery {
+  title: string
+  url: string
+  summary: string
+  published: string
+  source: "arxiv" | "hf-papers"
+  /** Whether this benchmark is already tracked */
+  already_tracked: boolean
 }
