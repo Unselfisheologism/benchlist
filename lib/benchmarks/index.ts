@@ -1,30 +1,32 @@
 /**
  * AI Benchmarks — central registry
  *
- * All benchmark sources and their fetch functions are registered here.
- * The cron job calls `fetchAllBenchmarks()` to update everything.
+ * Uses the BENCHMARK_CATALOG as the single source of truth for ALL known benchmarks.
+ * Only benchmarks with fetchers can be actively updated; the rest are catalog-only
+ * entries showing their information and linking to external charts.
  *
  * Tiered architecture:
- * - Tier 1 (Aggregators): Epoch AI, LMSYS, HF Open LLM
+ * - Tier 1 (Aggregators): Epoch AI, LMSYS, HF Open LLM, HELM, AlpacaEval
  * - Tier 2 (Direct): SWE-bench, ARC-AGI, Aider, LiveCodeBench, MCP-Bench, Terminal-Bench
- * - Tier 3 (Discovery): arXiv, HF Daily Papers
+ * - Tier 3 (Catalog-only): Every other benchmark in existence — shown with links & charts
+ * - Tier 4 (Discovery): arXiv, HF Daily Papers
  */
-import { AIDER_SOURCES, fetchAiderLeaderboard } from "./fetchers/aider"
-import { ARC_AGI_SOURCES, fetchArcAgiLeaderboard } from "./fetchers/arc-agi"
-import { EPOCH_AI_SOURCES, fetchEpochECI, fetchEpochFrontierMath } from "./fetchers/epoch-ai"
-import { fetchHuggingFaceLeaderboard, HUGGINGFACE_SOURCES } from "./fetchers/huggingface"
-import { fetchLiveCodeBenchLeaderboard, LIVECODEBENCH_SOURCES } from "./fetchers/livecodebench"
-import { fetchLmsysLeaderboard, LMSYS_SOURCES } from "./fetchers/lmsys"
-import { fetchMcpBenchLeaderboard, MCP_BENCH_SOURCES } from "./fetchers/mcp-bench"
+import { BENCHMARK_CATALOG, searchCatalog } from "./catalog"
+import { fetchAiderLeaderboard } from "./fetchers/aider"
+import { fetchArcAgiLeaderboard } from "./fetchers/arc-agi"
+import { fetchEpochECI, fetchEpochFrontierMath } from "./fetchers/epoch-ai"
+import { fetchHuggingFaceLeaderboard } from "./fetchers/huggingface"
+import { fetchLiveCodeBenchLeaderboard } from "./fetchers/livecodebench"
+import { fetchLmsysLeaderboard } from "./fetchers/lmsys"
+import { fetchMcpBenchLeaderboard } from "./fetchers/mcp-bench"
 import {
   fetchAimeLeaderboard,
   fetchGpqaLeaderboard,
   fetchHumanevalLeaderboard,
   fetchMmluLeaderboard,
-  MMLU_SOURCES,
 } from "./fetchers/mmlu"
-import { fetchSwebenchLeaderboard, SWE_BENCH_SOURCES } from "./fetchers/swe-bench"
-import { fetchTerminalBenchLeaderboard, TERMINAL_BENCH_SOURCES } from "./fetchers/terminal-bench"
+import { fetchSwebenchLeaderboard } from "./fetchers/swe-bench"
+import { fetchTerminalBenchLeaderboard } from "./fetchers/terminal-bench"
 import type { BenchmarkDef, BenchmarkSource, FetchResult } from "./types"
 
 // Re-export normalize utilities for use by other modules
@@ -36,108 +38,98 @@ export { searchArxivBenchmarks, enrichWithTrackingStatus } from "./discovery"
 export { fetchHFDailyPapers } from "./fetchers/hf-papers"
 export type { BenchmarkDiscovery } from "./types"
 
-/** All registered benchmark definitions */
-const ALL_BENCHMARKS: BenchmarkDef[] = [
-  // ── Tier 1: Aggregators ──────────────────────────────────────
-  // LMSYS Chatbot Arena (human preference Elo)
-  {
-    ...LMSYS_SOURCES[0],
-    fetch: fetchLmsysLeaderboard,
-  },
-  // Epoch AI — FrontierMath
-  {
-    ...EPOCH_AI_SOURCES[0],
-    fetch: fetchEpochFrontierMath,
-  },
-  // Epoch AI — ECI (composite index)
-  {
-    ...EPOCH_AI_SOURCES[1],
-    fetch: fetchEpochECI,
-  },
-  // Open LLM Leaderboard (HF)
-  {
-    ...HUGGINGFACE_SOURCES[0],
-    fetch: fetchHuggingFaceLeaderboard,
-  },
+// Re-export catalog for search/filter
+export { searchCatalog } from "./catalog"
+export { BENCHMARK_CATALOG } from "./catalog"
 
-  // ── Tier 2: Direct Sources ───────────────────────────────────
-  // SWE-bench Verified
-  {
-    ...SWE_BENCH_SOURCES[0],
-    fetch: fetchSwebenchLeaderboard,
-  },
-  // ARC-AGI
-  {
-    ...ARC_AGI_SOURCES[0],
-    fetch: fetchArcAgiLeaderboard,
-  },
-  // Aider Polyglot
-  {
-    ...AIDER_SOURCES[0],
-    fetch: fetchAiderLeaderboard,
-  },
-  // LiveCodeBench
-  {
-    ...LIVECODEBENCH_SOURCES[0],
-    fetch: fetchLiveCodeBenchLeaderboard,
-  },
-  // MCP-Bench (HF Spaces)
-  {
-    ...MCP_BENCH_SOURCES[0],
-    fetch: fetchMcpBenchLeaderboard,
-  },
-  // Terminal-Bench (HF Spaces)
-  {
-    ...TERMINAL_BENCH_SOURCES[0],
-    fetch: fetchTerminalBenchLeaderboard,
-  },
+// ═══════════════════════════════════════════════════════════════════════
+// BENCHMARKS WITH ACTIVE FETCHERS (can be auto-updated via cron)
+// ═══════════════════════════════════════════════════════════════════════
 
-  // ── Academic Benchmarks ──────────────────────────────────────
-  // MMLU-Pro
-  { ...MMLU_SOURCES[0], fetch: fetchMmluLeaderboard },
-  // GPQA Diamond
-  { ...MMLU_SOURCES[1], fetch: fetchGpqaLeaderboard },
-  // AIME 2024
-  { ...MMLU_SOURCES[2], fetch: fetchAimeLeaderboard },
-  // HumanEval
-  { ...MMLU_SOURCES[3], fetch: fetchHumanevalLeaderboard },
+/** Map of slugs to fetch functions for benchmarks that have active fetchers */
+const FETCHER_MAP: Record<string, () => Promise<FetchResult>> = {
+  // Tier 1: Aggregators
+  "chatbot-arena": fetchLmsysLeaderboard,
+  "epoch-frontiermath": fetchEpochFrontierMath,
+  "epoch-eci": fetchEpochECI,
+  "open-llm-leaderboard": fetchHuggingFaceLeaderboard,
 
-  // ── Tier 1: Human Preference ─────────────────────────────────
-  // Chatbot Arena — Coding subset
-  {
-    ...LMSYS_SOURCES[1],
-    fetch: fetchLmsysLeaderboard, // Uses same fetcher, returns overall arena
-  },
-  // Humanity's Last Exam
-  {
-    ...HUGGINGFACE_SOURCES[1],
-    fetch: async () => ({
-      slug: "hle",
-      entries: [
-        { model: "OpenAI o3", score: 9.9, rank: 1 },
-        { model: "Gemini 2.5 Pro", score: 8.2, rank: 2 },
-        { model: "Claude 3.5 Sonnet", score: 6.5, rank: 3 },
-      ],
-      total_models: 3,
-      top_model: "OpenAI o3",
-      top_score: 9.9,
+  // Tier 2: Direct sources
+  "swe-bench-verified": fetchSwebenchLeaderboard,
+  "arc-agi-pub": fetchArcAgiLeaderboard,
+  "aider-polyglot": fetchAiderLeaderboard,
+  livecodebench: fetchLiveCodeBenchLeaderboard,
+  "mcp-bench": fetchMcpBenchLeaderboard,
+  "terminal-bench": fetchTerminalBenchLeaderboard,
+
+  // Academic benchmarks
+  "mmlu-pro": fetchMmluLeaderboard,
+  "gpqa-diamond": fetchGpqaLeaderboard,
+  "aime-2024": fetchAimeLeaderboard,
+  humaneval: fetchHumanevalLeaderboard,
+
+  // HLE (static data)
+  hle: async () => ({
+    slug: "hle",
+    entries: [
+      { model: "OpenAI o3", score: 9.9, rank: 1 },
+      { model: "Gemini 2.5 Pro", score: 8.2, rank: 2 },
+      { model: "Claude 3.5 Sonnet", score: 6.5, rank: 3 },
+    ],
+    total_models: 3,
+    top_model: "OpenAI o3",
+    top_score: 9.9,
+    last_updated: new Date().toISOString(),
+  }),
+}
+
+/** Build the complete list of BenchmarkDef — catalog entries with fetchers where available */
+const ALL_BENCHMARKS: BenchmarkDef[] = BENCHMARK_CATALOG.map((src) => ({
+  ...src,
+  fetch:
+    FETCHER_MAP[src.slug] ??
+    (async () => ({
+      slug: src.slug,
+      entries: [],
+      total_models: 0,
+      top_model: "",
+      top_score: 0,
       last_updated: new Date().toISOString(),
-    }),
-  },
-]
+    })),
+}))
 
-/** Get all benchmark source metadata (no fetch) */
+/**
+ * Get ALL benchmark sources — the entire catalog, not just fetchable ones.
+ * This is the primary data source for the UI.
+ */
 export function getAllBenchmarkSources(): BenchmarkSource[] {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  return ALL_BENCHMARKS.map(({ fetch: _fn, ...rest }) => rest)
+  return BENCHMARK_CATALOG
+}
+
+/**
+ * Get only benchmark sources that have active fetchers
+ */
+export function getFetchableBenchmarkSources(): BenchmarkSource[] {
+  return BENCHMARK_CATALOG.filter((b) => b.slug in FETCHER_MAP)
+}
+
+/**
+ * Search the catalog by query, category, or org.
+ */
+export function searchBenchmarks(
+  query?: string,
+  category?: string,
+  org?: string,
+): BenchmarkSource[] {
+  return searchCatalog(query, category, org)
 }
 
 /** Get a single benchmark source by slug */
 export function getBenchmarkSource(slug: string): BenchmarkSource | undefined {
-  return ALL_BENCHMARKS.find((b) => b.slug === slug)
+  return BENCHMARK_CATALOG.find((b) => b.slug === slug)
 }
 
-/** Fetch a single benchmark by slug */
+/** Fetch a single benchmark by slug (only works for benchmarks with fetchers) */
 export async function fetchBenchmark(slug: string): Promise<FetchResult | null> {
   const def = ALL_BENCHMARKS.find((b) => b.slug === slug)
   if (!def) return null
@@ -145,8 +137,8 @@ export async function fetchBenchmark(slug: string): Promise<FetchResult | null> 
 }
 
 /**
- * Fetch ALL benchmarks. Runs each fetcher sequentially (no delay) to stay
- * within CF Workers CPU time limit. Each fetcher has its own timeout.
+ * Fetch ALL benchmarks that have active fetchers.
+ * Runs sequentially to stay within CF Workers CPU time limit.
  */
 export async function fetchAllBenchmarks(): Promise<
   Map<string, FetchResult & { source: BenchmarkSource }>
@@ -154,6 +146,7 @@ export async function fetchAllBenchmarks(): Promise<
   const results = new Map<string, FetchResult & { source: BenchmarkSource }>()
 
   for (const def of ALL_BENCHMARKS) {
+    if (!(def.slug in FETCHER_MAP)) continue
     try {
       const result = await def.fetch()
       results.set(def.slug, { ...result, source: def })
@@ -172,6 +165,38 @@ export async function fetchAllBenchmarks(): Promise<
   }
 
   return results
+}
+
+/**
+ * Get all unique categories from the catalog
+ */
+export function getAllCategories(): string[] {
+  const cats = new Set(BENCHMARK_CATALOG.map((b) => b.category))
+  return Array.from(cats).sort()
+}
+
+/**
+ * Get all unique organizations from the catalog
+ */
+export function getAllOrganizations(): string[] {
+  const orgs = new Set(BENCHMARK_CATALOG.map((b) => b.org).filter(Boolean))
+  return Array.from(orgs).sort() as string[]
+}
+
+/**
+ * Get catalog stats
+ */
+export function getCatalogStats() {
+  return {
+    total: BENCHMARK_CATALOG.length,
+    withFetchers: Object.keys(FETCHER_MAP).length,
+    categories: getAllCategories().length,
+    organizations: getAllOrganizations().length,
+    byCategory: getAllCategories().map((cat) => ({
+      category: cat,
+      count: BENCHMARK_CATALOG.filter((b) => b.category === cat).length,
+    })),
+  }
 }
 
 export type { BenchmarkDef, BenchmarkSource, FetchResult }

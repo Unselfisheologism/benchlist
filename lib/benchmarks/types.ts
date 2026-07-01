@@ -32,6 +32,18 @@ export interface BenchmarkSource {
   update_frequency?: string
   /** Tier: "aggregator" | "direct" | "discovery" */
   tier?: "aggregator" | "direct" | "discovery"
+  /** Static image URL of the chart/leaderboard */
+  chart_image_url?: string
+  /** Embeddable URL for live chart (HF Space iframe, Gradio widget, etc.) */
+  chart_embed_url?: string
+  /** Emoji icon for the benchmark */
+  icon?: string
+  /** Searchable tags */
+  tags?: string[]
+  /** Optional: org/lab that created this benchmark */
+  org?: string
+  /** Optional: when was the benchmark last updated */
+  last_updated_date?: string
 }
 
 export interface FetchResult {
